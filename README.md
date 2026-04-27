@@ -2,7 +2,7 @@
 
 API HTTP em **.NET 10** que consulta múltiplos provedores externos de débitos veiculares (IPVA, multa), normaliza, calcula juros simples e simula formas de pagamento (PIX e cartão de crédito).
 
-Implementação do desafio HomeTest (Backend Engineer Sênior). Spec autoritativa em [`docs/HomeTest-2.pdf`](docs/HomeTest-2.pdf). Decisões arquiteturais documentadas em [`docs/architecture/`](docs/architecture/) — 18 ADRs aceitos.
+Implementação do desafio HomeTest (Backend Engineer Sênior). Spec autoritativa em [`docs/HomeTest-2.pdf`](docs/HomeTest-2.pdf). Decisões arquiteturais documentadas em [`docs/architecture/`](docs/architecture/) — 19 ADRs aceitos.
 
 ## Como rodar
 
@@ -49,7 +49,7 @@ dotnet run --project src/Dok.Api
 ### Caminho 3 — Testes
 
 ```bash
-dotnet test         # 53 testes (Domain + Application + Integration)
+dotnet test         # 57 testes (Domain 39 + Application 7 + Integration 11)
 make test           # equivalente
 ```
 
@@ -171,8 +171,11 @@ Dok.slnx
 │   └── Dok.Integration.Tests/    WebApplicationFactory + WireMock.Net
 ├── docs/
 │   ├── HomeTest.pdf, HomeTest-2.pdf   spec do desafio
-│   ├── architecture/                  18 ADRs (decisões e tradeoffs)
+│   ├── architecture/                  19 ADRs (decisões e tradeoffs)
+│   ├── APRESENTACAO.md                roteiro da banca
 │   └── PLANO-IMPLEMENTACAO.md         plano de execução
+├── .claude/
+│   └── skills/                        skills de modificação ao vivo para o item 9 (ADR-019)
 ├── docker-compose.yml
 ├── Makefile
 └── README.md
@@ -194,6 +197,7 @@ Dok.slnx
 - **Limites de borda HTTP**: body 1 MiB, `JsonUnmappedMemberHandling.Disallow` (ADR-015).
 - **OpenAPI** nativo (.NET 9+ `Microsoft.AspNetCore.OpenApi`) + UI **Scalar** moderna; VOs declarados como string com regex/example (ADR-016).
 - **`IOptions<T>` tipado com `ValidateOnStart`** — config inválida não deixa o app subir (ADR-017).
+- **Skills de modificação ao vivo (Claude Code)** versionadas em `.claude/skills/` — `/add-provider`, `/add-debt-type`, `/change-interest-rate` automatizam os 3 cenários do item 9 da apresentação com guardrails de branch isolado e validação build+test (ADR-019).
 
 ## Trade-offs
 
@@ -233,10 +237,19 @@ A spec lista vários itens em "Seria bacana se" — opcionais, mas implementados
 
 - **Simulação de falha de provedor** (timeout/indisponibilidade) via WireMock.Net.
 - **Retry com backoff e circuit breaker** via `Microsoft.Extensions.Http.Resilience` (Polly v8 internamente). Circuit breaker isolado por provider.
-- **Testes automatizados**: 53 ao todo (Domain unitário + Application com mocks + Integration com WireMock + WebApplicationFactory).
-- **Logs estruturados** Serilog com **mascaramento de placa para LGPD** (`IDestructuringPolicy<Plate>` que aplica `.Masked()` automaticamente).
+- **Testes automatizados**: 57 ao todo (Domain unitário + Application com mocks + Integration com WireMock + WebApplicationFactory).
+- **Logs estruturados** Serilog com **mascaramento de placa para LGPD** (`IDestructuringPolicy<Plate>` que aplica `.Masked()` automaticamente). Em casos de erro de validação (`InvalidPlateException`), o raw também não é logado — apenas o tamanho.
 - **Padrões nomeados** (Strategy, Adapter, Ports & Adapters / Hexagonal pragmático) — documentados nos ADRs e no README.
 - **Limite de tamanho do body** (1 MiB, configurável via `RequestLimits:MaxBodyBytes`) e **rejeição de campos desconhecidos** (`JsonUnmappedMemberHandling.Disallow`).
+- **Health checks**: `GET /health/live` e `GET /health/ready` (200 OK quando o app está saudável).
+
+## Decisões fora do escopo direto da spec
+
+A spec não dita certos detalhes de design — registro aqui as decisões arbitrárias para transparência:
+
+- **Endpoint dos providers (`GET /debts/{plate}`)**: a spec define o **payload** retornado pelos provedores (formato JSON em A, XML em B), mas não o endpoint HTTP. Adotei `GET /debts/{placa}` como convenção. Em integração real, o path completo é configurável via `Providers.ProviderAUrl`/`ProviderBUrl`.
+- **Data de referência configurável**: a spec define a data fixa `2024-05-10T00:00:00Z` para os exemplos numéricos. Em produção (relógio real), os valores variam dia a dia. Para garantir que a demo bata exatamente com os exemplos da spec (`1800.00`, `555.93`, `2355.93`), o `docker-compose.yml` fixa a data via `Domain__ReferenceDate=2024-05-10T00:00:00Z`. Removendo essa env var, a app usa `TimeProvider.System` (relógio real).
+- **Header `X-Dok-Provider`**: cada response carrega esse header indicando qual provedor serviu os dados. **Body permanece literal** conforme a spec — header é metadado HTTP, não payload.
 
 ## Referências
 

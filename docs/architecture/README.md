@@ -76,6 +76,7 @@ ADRs que cobrem decisões compostas (ex: ADR-009 sobre resiliência, com camadas
 | 016 | Documentação de API: OpenAPI nativo + Scalar | aceito | [ADR-016](ADR-016-Documentacao-API.md) |
 | 017 | Configuração: IOptions tipado + ValidateOnStart | aceito | [ADR-017](ADR-017-Configuracao.md) |
 | 018 | Empacotamento: Dockerfile multi-stage + docker-compose + Makefile | aceito | [ADR-018](ADR-018-Empacotamento.md) |
+| 019 | Skills de modificação ao vivo (Claude Code) para a banca | aceito | [ADR-019](ADR-019-Skills-Modificacao-Ao-Vivo.md) |
 
 ## Como ler
 
@@ -115,6 +116,9 @@ ADRs que cobrem decisões compostas (ex: ADR-009 sobre resiliência, com camadas
 ### Operação
 - `IOptions<T>` tipado com validação no startup (ADR-017).
 - Dockerfile multi-stage + docker-compose com 3 serviços + Makefile (ADR-018).
+
+### Apresentação
+- 3 skills de Claude Code (`/add-provider`, `/add-debt-type`, `/change-interest-rate`) para o item 9 da apresentação — prompt-as-code versionado, com guardrails de branch isolado e validação build+test (ADR-019).
 
 ## Convenção de nomes para novos ADRs
 

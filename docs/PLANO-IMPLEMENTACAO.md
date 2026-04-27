@@ -7,12 +7,12 @@
 Projeto **greenfield** para o desafio HomeTest (backend engineer sênior nível 3).
 
 - **Spec autoritativa**: [`HomeTest-2.pdf`](HomeTest-2.pdf) — substitui a v1.
-- **Arquitetura**: 18 ADRs aceitos em [`architecture/`](architecture/) — cobrem stack, padrões, libs e estrutura.
+- **Arquitetura**: 19 ADRs aceitos em [`architecture/`](architecture/) — cobrem stack, padrões, libs, estrutura e prompt-as-code (ADR-019: skills da apresentação).
 - **Stack**: .NET 10 LTS, ASP.NET Core Controllers, Hexagonal pragmático, multi-projeto.
 - **Prazo**: spec dá até 2026-05-04 (7 dias). Meta interna: **entregar em até 2 dias** — não há razão para esticar.
 - **Apresentação**: ao vivo, com modificações via IA na banca — código precisa ser navegável e os boundaries precisam ser respeitados pelo compilador.
 
-A fase de decisão arquitetural está **encerrada**. Esta é a fase de execução: transformar os 18 ADRs em código entregável, cobrindo também os 7 GAPs identificados (regras numéricas e DTOs específicos da spec que não foram cobertos pelos ADRs porque são detalhes de implementação, não decisão arquitetural).
+A fase de decisão arquitetural está **encerrada para o produto** (ADR-001 a ADR-018). ADR-019 trata de **artefatos de apresentação** (skills do Claude Code para o item 9), não do produto em si. Esta é a fase de execução: transformar os ADRs em código entregável, cobrindo também os 7 GAPs identificados (regras numéricas e DTOs específicos da spec que não foram cobertos pelos ADRs porque são detalhes de implementação, não decisão arquitetural) e as skills da apresentação.
 
 ## Estrutura final esperada (ADR-007)
 
@@ -132,6 +132,24 @@ Núcleo puro, sem IO.
 - **`Makefile`** com `up`, `down`, `build`, `test`, `coverage`, `clean`.
 
 **Arquivos críticos**: `src/Dok.Api/Dockerfile`, `src/Dok.FakeProviders/Dockerfile`, `docker-compose.yml`, `Makefile`.
+
+### Estágio 8.5 — Skills de modificação ao vivo (ADR-019)
+
+Artefato de **apresentação**, não de produto. Empacota os 3 cenários do item 9 do `APRESENTACAO.md` como skills versionadas em `.claude/skills/`.
+
+- **`add-provider`**: pergunta nome (`C`, `D`, ...), URL base e formato (`JSON`/`XML`); cria `Provider<X>Adapter`, registra DI com Polly, atualiza `ProvidersOptions`, `appsettings.json`, `docker-compose.yml`, e `Dok.FakeProviders`.
+- **`add-debt-type`**: pergunta nome do tipo, taxa diária e cap opcional; estende `DebtType` enum, atualiza `DebtTypeMapper`, cria `<X>InterestRule`, registra no DI da Application, gera testes em `Dok.Domain.Tests`.
+- **`change-interest-rate`**: pergunta tipo (`ipva`/`multa`) e nova taxa/cap; edita a constante na rule e ajusta os testes que dependem dela.
+
+**Workflow Git obrigatório (ADR-019 sub-decisão 5)**:
+- **Pré-flight**: working tree limpo + `git fetch origin main && git checkout main && git pull --ff-only` + `git checkout -b feat/<skill>-<param>`.
+- **Validação**: `dotnet build` + `dotnet test` (escopo afetado) verde antes de commit. Falha aborta sem commitar.
+- **Post-flight**: `git add <arquivos explícitos>` + commit padronizado + `git push -u origin <branch>` + `gh pr create` com título e body. URL do PR é o output final.
+- Skills **não tocam** em `Directory.Build.props`, `Dok.slnx`, `Dockerfile`, `Makefile`, `.github/`, `docs/architecture/`, ou `.claude/`.
+
+**Critério de pronto**: cada skill executada com sucesso 3× consecutivas em branches descartáveis (PRs do ensaio fechados sem merge).
+
+**Arquivos críticos**: `.claude/skills/add-provider/SKILL.md`, `.claude/skills/add-debt-type/SKILL.md`, `.claude/skills/change-interest-rate/SKILL.md`.
 
 ### Estágio 9 — README e entrega
 
