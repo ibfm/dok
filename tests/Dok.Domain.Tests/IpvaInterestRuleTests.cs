@@ -8,7 +8,7 @@ public class IpvaInterestRuleTests
     [Fact]
     public void Apply_with_121_days_overdue_caps_at_20_percent()
     {
-        // 1500 com 121 dias: 0,33% × 1500 × 121 = 598,95; cap = 20% × 1500 = 300; usa cap → 1800,00
+        // 1500 com 121 dias: 0,5% × 1500 × 121 = 907,50; cap = 20% × 1500 = 300; usa cap → 1800,00
         var debt = new Debt(DebtType.Ipva, Money.Of(1500m), new DateOnly(2024, 1, 10));
         var result = _rule.Apply(debt, _today);
 
@@ -39,11 +39,11 @@ public class IpvaInterestRuleTests
     [Fact]
     public void Apply_under_cap_uses_proportional_interest()
     {
-        // 1000 com 30 dias: 0,33% × 1000 × 30 = 99 (cap = 200 — não atinge)
+        // 1000 com 30 dias: 0,5% × 1000 × 30 = 150 (cap = 200 — não atinge)
         var debt = new Debt(DebtType.Ipva, Money.Of(1000m), _today.AddDays(-30));
         var result = _rule.Apply(debt, _today);
 
-        result.UpdatedAmount.Value.ShouldBe(1099m);
+        result.UpdatedAmount.Value.ShouldBe(1150m);
         result.DaysOverdue.ShouldBe(30);
     }
 

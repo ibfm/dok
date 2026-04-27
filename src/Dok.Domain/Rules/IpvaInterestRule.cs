@@ -2,7 +2,7 @@ namespace Dok.Domain.Rules;
 
 public sealed class IpvaInterestRule : IInterestRule
 {
-    private const decimal DailyRate = 0.0033m;
+    private const decimal DailyRate = 0.0050m;
     private const decimal Cap = 0.20m;
 
     public DebtType Type => DebtType.Ipva;
