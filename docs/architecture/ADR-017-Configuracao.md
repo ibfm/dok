@@ -125,9 +125,25 @@ Exemplo de `appsettings.json` (defaults, todos ambientes):
     "CircuitBreakerFailures": 5,
     "CircuitBreakerWindowSeconds": 30,
     "CircuitBreakerBreakDurationSeconds": 30
+  },
+  "RequestLimits": {
+    "MaxBodyBytes": 1048576
   }
 }
 ```
+
+### Reload de configuração — quais settings exigem restart
+
+Mudar `appsettings.json` (ou variáveis de ambiente) **não exige rebuild** do binário/imagem — sempre que reiniciar o processo, os novos valores entram em vigor. Mas o **escopo do reload** depende de onde o setting é consumido:
+
+| Seção | Hot reload? | Como aplicar |
+|---|---|---|
+| `Logging` (níveis e overrides do Serilog) | ✅ sim | reload automático ao salvar `appsettings.json` |
+| `Resilience` (Polly/Http.Resilience) | ⚠️ não | restart obrigatório (pipeline construída uma vez no startup) |
+| `Providers` (URLs dos provedores) | ⚠️ não | restart obrigatório (`HttpClient` é registrado uma vez) |
+| `RequestLimits` (Kestrel) | ❌ não | restart obrigatório (Kestrel decide limites no startup, antes do DI) |
+
+**Convenção**: ao alterar config em produção, o procedimento padrão é editar → restart do serviço. Hot reload é "bônus" para Logging, não regra geral. Documentado no README.
 
 `appsettings.Development.json` (overrides para dev local):
 

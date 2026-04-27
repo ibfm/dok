@@ -143,13 +143,33 @@ Adicionar caso ao pattern matching do `DomainExceptionHandler` ou criar novo `Ba
 
 ## Decisão
 
-1. **Limite de body**: **1 MiB global** via `Kestrel.Limits.MaxRequestBodySize = 1 * 1024 * 1024`. Alinhado com a sugestão da spec.
+1. **Limite de body**: **1 MiB por padrão**, **configurável** via `RequestLimits:MaxBodyBytes` em `appsettings.json` (alinhado ADR-017). Aplicado globalmente via `Kestrel.Limits.MaxRequestBodySize`.
 2. **Campos desconhecidos**: **`JsonUnmappedMemberHandling.Disallow`** configurado em `AddJsonOptions` para Controllers (e `ConfigureHttpJsonOptions` para Minimal API, se algum dia adotada).
 3. **Status codes e payloads**:
    - Body excede limite → `413 Content Too Large` com `{"error":"payload_too_large"}`.
    - Campo desconhecido / JSON malformado → `400 Bad Request` com `{"error":"invalid_request"}`.
 4. **Integração com `IExceptionHandler` (ADR-014)**: handler dedicado `HttpRequestErrorsHandler` na chain, **antes** do `DomainExceptionHandler` — separação por origem do erro (borda HTTP vs domínio).
-5. **Documentar no README**: limite, comportamento estrito de campos desconhecidos, e códigos retornados — para clientes da API saberem o contrato.
+5. **Documentar no README**: limite, comportamento estrito de campos desconhecidos, códigos retornados — para clientes da API saberem o contrato.
+
+### Configuração e ciclo de vida
+
+```json
+{
+  "RequestLimits": {
+    "MaxBodyBytes": 1048576
+  }
+}
+```
+
+Como `ConfigureKestrel` roda na **fase de startup do host** (antes do `IServiceProvider` estar pronto para `IOptions<T>`), o valor é lido diretamente de `builder.Configuration` no `Program.cs`:
+
+```csharp
+var maxBodyBytes = builder.Configuration.GetValue<long?>("RequestLimits:MaxBodyBytes")
+                   ?? 1L * 1024 * 1024;
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = maxBodyBytes);
+```
+
+**Hot reload**: limites do Kestrel **não** são reconfigurados em runtime — alterações em `appsettings.json` exigem **reiniciar o processo** para entrar em vigor. Isso é uma limitação do próprio Kestrel, não do design da aplicação. Documentado no README.
 
 ## Justificativa
 
