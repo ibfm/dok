@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Serilog.Core;
 using Serilog.Events;
 
@@ -8,7 +9,7 @@ public sealed class PlateDestructuringPolicy : IDestructuringPolicy
     public bool TryDestructure(
         object value,
         ILogEventPropertyValueFactory propertyValueFactory,
-        out LogEventPropertyValue? result)
+        [NotNullWhen(true)] out LogEventPropertyValue? result)
     {
         if (value is Plate plate)
         {

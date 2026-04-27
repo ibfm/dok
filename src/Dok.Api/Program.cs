@@ -11,12 +11,14 @@ builder.ConfigureDokKestrel();
 
 // --- Services ---
 builder.Services
-    .AddSingleton(TimeProvider.System)
+    .AddDokTimeProvider(builder.Configuration)
     .AddDokApplication()
     .AddDokInfrastructure(builder.Configuration)
     .AddDokJson()
     .AddDokErrorHandling()
     .AddDokOpenApi();
+
+builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
@@ -27,6 +29,8 @@ app.UseProviderHeader();
 
 // --- Endpoints ---
 app.MapDokOpenApi();
+app.MapHealthChecks("/health/live");
+app.MapHealthChecks("/health/ready");
 app.MapControllers();
 
 await app.RunAsync();

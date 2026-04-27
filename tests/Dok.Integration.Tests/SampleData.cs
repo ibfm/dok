@@ -37,4 +37,25 @@ public static class SampleData
           ]
         }
         """;
+
+    /// <summary>Débito futuro: dias_atraso ≤ 0, juros = 0.</summary>
+    public const string ProviderAJsonFuture = """
+        {
+          "vehicle": "ABC1234",
+          "debts": [
+            { "type": "IPVA", "amount": 1500.00, "due_date": "2024-06-10" }
+          ]
+        }
+        """;
+
+    /// <summary>Múltiplos débitos do mesmo tipo (testa SOMENTE_IPVA singular agregado).</summary>
+    public const string ProviderAJsonTwoIpvas = """
+        {
+          "vehicle": "ABC1234",
+          "debts": [
+            { "type": "IPVA", "amount": 500.00, "due_date": "2024-01-01" },
+            { "type": "IPVA", "amount": 700.00, "due_date": "2024-02-01" }
+          ]
+        }
+        """;
 }

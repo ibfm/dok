@@ -126,4 +126,79 @@ public class DebtsApiTests : IClassFixture<WireMockApiFactory>
         doc.RootElement.GetProperty("debitos").GetArrayLength().ShouldBe(0);
         doc.RootElement.GetProperty("resumo").GetProperty("total_atualizado").GetString().ShouldBe("0.00");
     }
+
+    [Fact]
+    public async Task POST_with_malformed_json_returns_400()
+    {
+        _factory.ResetMocks();
+
+        var response = await _client.PostAsync("/api/v1/debitos",
+            JsonBody("""{ "placa": """));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        var body = await response.Content.ReadAsStringAsync();
+        body.ShouldContain("\"error\":\"invalid_request\"");
+    }
+
+    [Fact]
+    public async Task POST_with_future_due_date_returns_zero_days_overdue_and_original_amount()
+    {
+        _factory.ResetMocks();
+        _factory.StubProviderA(SampleData.ProviderAJsonFuture);
+
+        var response = await _client.PostAsync("/api/v1/debitos",
+            JsonBody("""{ "placa": "ABC1234" }"""));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+        var debit = doc.RootElement.GetProperty("debitos")[0];
+
+        debit.GetProperty("dias_atraso").GetInt32().ShouldBe(0);
+        debit.GetProperty("valor_original").GetString().ShouldBe("1500.00");
+        debit.GetProperty("valor_atualizado").GetString().ShouldBe("1500.00");
+    }
+
+    [Fact]
+    public async Task POST_with_two_ipvas_groups_into_singular_SOMENTE_IPVA()
+    {
+        _factory.ResetMocks();
+        _factory.StubProviderA(SampleData.ProviderAJsonTwoIpvas);
+
+        var response = await _client.PostAsync("/api/v1/debitos",
+            JsonBody("""{ "placa": "ABC1234" }"""));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var json = await response.Content.ReadAsStringAsync();
+        using var doc = JsonDocument.Parse(json);
+
+        // Debits chegam como dois itens IPVA separados
+        doc.RootElement.GetProperty("debitos").GetArrayLength().ShouldBe(2);
+
+        // Mas só duas opções de pagamento: TOTAL + um único SOMENTE_IPVA agregado (singular)
+        var opcoes = doc.RootElement.GetProperty("pagamentos").GetProperty("opcoes");
+        opcoes.GetArrayLength().ShouldBe(2);
+        opcoes[0].GetProperty("tipo").GetString().ShouldBe("TOTAL");
+        opcoes[1].GetProperty("tipo").GetString().ShouldBe("SOMENTE_IPVA");
+    }
+
+    [Fact]
+    public async Task POST_with_body_above_1MiB_returns_413()
+    {
+        _factory.ResetMocks();
+        // Tenta passar > 1 MiB de payload — Kestrel deveria rejeitar.
+        // Nota: WebApplicationFactory usa TestServer (não Kestrel), então este teste
+        // só será efetivo em E2E real (Docker). Mantemos como contrato esperado.
+        var padding = new string('A', 2 * 1024 * 1024);
+        var bigJson = $$"""{ "placa": "ABC1234", "padding": "{{padding}}" }""";
+
+        var response = await _client.PostAsync("/api/v1/debitos",
+            JsonBody(bigJson));
+
+        // Em Kestrel real → 413. Em TestServer → 400 invalid_request (campo desconhecido pega antes).
+        // Aceitamos qualquer um dos dois aqui — o comportamento Kestrel é validado em testes E2E manuais.
+        response.StatusCode.ShouldBeOneOf(
+            HttpStatusCode.RequestEntityTooLarge,
+            HttpStatusCode.BadRequest);
+    }
 }

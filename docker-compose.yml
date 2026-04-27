@@ -32,6 +32,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       Providers__ProviderAUrl: http://provider-a:9001
       Providers__ProviderBUrl: http://provider-b:9002
+      # Fixa a data em 2024-05-10 conforme spec, garantindo que os exemplos
+      # numéricos do enunciado (1800.00, 555.93, 2355.93) batam na demo.
+      # Para usar relógio real, remova esta linha.
+      Domain__ReferenceDate: "2024-05-10T00:00:00Z"
     depends_on:
       - provider-a
       - provider-b

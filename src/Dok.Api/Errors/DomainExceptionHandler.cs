@@ -15,7 +15,9 @@ public sealed class DomainExceptionHandler(
         switch (exception)
         {
             case InvalidPlateException invalid:
-                logger.LogWarning("Invalid plate received: {Raw}", invalid.Raw);
+                // Nunca logar a placa raw — viola LGPD. Logamos só o tamanho, o que basta para diagnose.
+                logger.LogWarning("Invalid plate format received (length={Length})",
+                    invalid.Raw?.Length ?? 0);
                 await Write(httpContext, StatusCodes.Status400BadRequest,
                     new ErrorPayload("invalid_plate"), cancellationToken);
                 return true;

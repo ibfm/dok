@@ -52,12 +52,26 @@ public sealed class PaymentSimulator : IPaymentSimulator
                 continue;
             }
 
-            // Price/PMT: base * i * (1+i)^n / ((1+i)^n − 1)
-            var i = (double)CardMonthlyRate;
-            var factor = Math.Pow(1d + i, n);
-            var pmtRaw = (decimal)((double)baseAmount.Value * i * factor / (factor - 1d));
-            installments.Add(new Installment(n, Money.Of(pmtRaw)));
+            // Price/PMT em decimal puro (sem conversão para double):
+            // valor_parcela = base * i * (1+i)^n / ((1+i)^n − 1)
+            var i = CardMonthlyRate;
+            var factor = Pow(1m + i, n);
+            var pmt = baseAmount.Value * i * factor / (factor - 1m);
+            installments.Add(new Installment(n, Money.Of(pmt)));
         }
         return installments;
+    }
+
+    /// <summary>
+    /// Eleva <paramref name="value"/> à potência inteira <paramref name="exponent"/> mantendo
+    /// o cálculo 100% em <see cref="decimal"/> — sem conversão para <see cref="double"/>,
+    /// evitando imprecisão de ponto flutuante. Suficiente para expoentes pequenos (1x/6x/12x).
+    /// </summary>
+    private static decimal Pow(decimal value, int exponent)
+    {
+        if (exponent < 0) throw new ArgumentOutOfRangeException(nameof(exponent));
+        decimal result = 1m;
+        for (var i = 0; i < exponent; i++) result *= value;
+        return result;
     }
 }
