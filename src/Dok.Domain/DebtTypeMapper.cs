@@ -8,6 +8,7 @@ public static class DebtTypeMapper
     {
         "IPVA"  => DebtType.Ipva,
         "MULTA" => DebtType.Multa,
+        "LICENCIAMENTO" => DebtType.Licenciamento,
         null or "" => throw new UnknownDebtTypeException(raw ?? "<null>"),
         var other  => throw new UnknownDebtTypeException(other),
     };
@@ -16,6 +17,7 @@ public static class DebtTypeMapper
     {
         DebtType.Ipva  => "IPVA",
         DebtType.Multa => "MULTA",
+        DebtType.Licenciamento => "LICENCIAMENTO",
         _ => throw new ArgumentOutOfRangeException(nameof(type), type, "Unmapped DebtType"),
     };
 }
