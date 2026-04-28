@@ -80,10 +80,12 @@ dotnet build
 Se falhar: **NÃO commite**.
 
 ```bash
-dotnet test --filter "FullyQualifiedName~Domain.Tests"
+dotnet test
 ```
 
-Se falhar: **NÃO commite**. Reveja os valores recalculados nos testes do passo 2 — provavelmente é cálculo desatualizado. Use o output do `dotnet test` (mostra `Expected: X but was: Y`) para corrigir os literais e rode de novo.
+> Rode a suite **completa** (Domain + Application + Integration), não só Domain. Mudanças de constantes podem cascatar para Application e Integration tests que validam exemplos numéricos da spec (ex: `Apply_with_121_days_overdue → 1800.00`). Achado capturado durante o ensaio.
+
+Se falhar: **NÃO commite**. Reveja os valores recalculados — provavelmente é cálculo desatualizado em algum teste. Use o output do `dotnet test` (mostra `Expected: X but was: Y`) para corrigir os literais e rode de novo. Inclua na lista de `git add` qualquer arquivo de teste adicional que tenha sido modificado.
 
 > Faça **no máximo 3 iterações** de ajuste. Se ainda não passar, abortar e instruir o usuário a investigar manualmente.
 
@@ -93,6 +95,10 @@ Se falhar: **NÃO commite**. Reveja os valores recalculados nos testes do passo 
 git add \
   src/Dok.Domain/Rules/<rule_class>.cs \
   tests/Dok.Domain.Tests/<tests_class>.cs
+# Inclua também qualquer outro arquivo de teste (Application/Integration) que tenha
+# sido ajustado durante a iteração de validação acima. Ex:
+#   tests/Dok.Application.Tests/DebtsCalculatorTests.cs
+#   tests/Dok.Integration.Tests/DebtsApiTests.cs
 ```
 
 ```bash

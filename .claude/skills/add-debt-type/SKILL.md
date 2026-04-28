@@ -134,7 +134,17 @@ services.AddSingleton<IInterestRule, <type_pascal>InterestRule>();
 
 (O dicionário `IReadOnlyDictionary<DebtType, IInterestRule>` já é construído via `GetServices<IInterestRule>().ToDictionary(r => r.Type)`, então não precisa tocá-lo.)
 
-### 5. `tests/Dok.Domain.Tests/<type_pascal>InterestRuleTests.cs` (NOVO)
+### 5. `tests/Dok.Domain.Tests/DebtTypeMapperTests.cs` (EDIT — pode ou não ser necessário)
+
+Esse arquivo tem 3 `[Theory]` que **podem** colidir com o novo tipo. Verifique cada uma:
+
+1. **`Parse_with_known_returns_enum`** — adicione duas `[InlineData("<type_upper>", DebtType.<type_pascal>)]` (uma maiúscula, uma minúscula `"<type_lower>"`) para o novo tipo passar pelo round-trip.
+2. **`Parse_with_unknown_throws`** — se houver `[InlineData("<type_upper>")]` listada como exemplo de tipo desconhecido (ex: `LICENCIAMENTO`, `DPVAT`), **remova** essa linha. Senão o teste vai falhar porque o tipo agora é conhecido.
+3. **`ToWire_returns_uppercase`** — adicione `[InlineData(DebtType.<type_pascal>, "<type_upper>")]` para cobrir o lado oposto.
+
+> Sem esse passo, `Parse_with_unknown_throws("<type_upper>")` quebra. Achado capturado durante o ensaio.
+
+### 6. `tests/Dok.Domain.Tests/<type_pascal>InterestRuleTests.cs` (NOVO)
 
 Estrutura mínima espelhando `IpvaInterestRuleTests` (com cap) ou `MultaInterestRuleTests` (sem cap). 4 testes:
 
@@ -169,10 +179,11 @@ git add \
   src/Dok.Domain/DebtTypeMapper.cs \
   src/Dok.Domain/Rules/<type_pascal>InterestRule.cs \
   src/Dok.Application/DependencyInjection.cs \
-  tests/Dok.Domain.Tests/<type_pascal>InterestRuleTests.cs
+  tests/Dok.Domain.Tests/<type_pascal>InterestRuleTests.cs \
+  tests/Dok.Domain.Tests/DebtTypeMapperTests.cs   # se foi tocado no passo 5
 ```
 
-(Liste os 5 arquivos exatos. Não use `git add -A`.)
+(Liste os arquivos exatos. Não use `git add -A`. Inclua `DebtTypeMapperTests.cs` apenas se foi modificado.)
 
 ```bash
 git commit -m "$(cat <<'EOF'

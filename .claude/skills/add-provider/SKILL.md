@@ -123,10 +123,10 @@ dotnet build
 Se falhar: **NÃO commite**. Reporte o erro pro usuário e pare. Diga: *"Build falhou. Reveja o output acima. Branch `feat/add-provider-<letter_lower>` permanece com as mudanças mas sem commit."*
 
 ```bash
-dotnet test --filter "FullyQualifiedName~Domain.Tests|FullyQualifiedName~Application.Tests"
+dotnet test
 ```
 
-(Pulamos integration tests porque exigiriam wiremock real do novo provider — fora do escopo da skill.)
+> Rode a suite completa. Integration tests **devem continuar verdes** mesmo sem o novo provider configurado nos `WireMockServer` dos testes — porque o `DebtProviderChain` ignora providers que não respondem se algum anterior já respondeu (e os existentes A/B continuam intactos). Se algum integration test depender de "todos os providers configurados", isso é sinal de teste frágil — reporte ao usuário.
 
 Se testes falharem: **NÃO commite**. Reporte e pare.
 
