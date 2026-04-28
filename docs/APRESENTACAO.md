@@ -293,68 +293,81 @@ grep -A 5 "RequestLimits" src/Dok.Api/appsettings.json
 
 ## 🤖 9. Modificação ao vivo com IA (caso a banca peça)
 
-> **Decisão arquitetural**: os 3 cenários esperados estão empacotados como **skills do Claude Code** versionadas no repo (`.claude/skills/`). Cada skill abre uma feature branch a partir de `main` atualizado, faz as edições, valida com `dotnet build` + testes, dá commit, push e abre um **PR no GitHub** via `gh pr create`. URL do PR é o output final visível pra banca. Justificativa completa em [ADR-019](architecture/ADR-019-Skills-Modificacao-Ao-Vivo.md).
+> **Decisão arquitetural**: os 3 cenários esperados estão empacotados como **skills do Claude Code** (`.claude/skills/`) — prompt-as-code versionado no repo. As skills foram **ensaiadas antes da call** e cada ensaio gerou um **PR no GitHub** que serve de evidência objetiva do que cada uma produz. Durante a apresentação, o caminho default é **executar à mão** mostrando os pontos de extensão; as skills entram como **artefato sênior de engenharia em torno de IA**, não como performance ao vivo. Justificativa completa em [ADR-019](architecture/ADR-019-Skills-Modificacao-Ao-Vivo.md).
 
 **Frase de transição para a banca**:
 
-> *"Os três cenários típicos de extensão estão pré-empacotados como skills do Claude Code. Eu disparo uma slash-command, respondo as perguntas, e a skill abre uma feature branch a partir da main, faz as edições, valida com build+test, e termina abrindo um PR no GitHub. No fim eu mando o link pra vocês revisarem o diff. É prompt-as-code: versionado no repo, ensaiado antes da call. Se vocês pedirem algo fora desses três, eu disparo ad-hoc."*
+> *"Os três cenários típicos de extensão eu cobri de duas formas. Primeira: empacotei cada um como uma skill do Claude Code versionada no repo (`.claude/skills/`), que abre uma feature branch a partir da main, faz as edições, valida com build+test, e termina abrindo um PR no GitHub. Eu rodei essas skills 3 vezes em ensaio antes da call e os PRs estão lá pra vocês inspecionarem o diff exato — é prompt-as-code, com guardrails, ensaiado e auditável. Segunda: pra demonstração ao vivo eu vou na mão mesmo, é mais rápido e mostra os pontos de extensão. Se vocês pedirem algo fora desses três, eu disparo ad-hoc."*
 
-### Cenários cobertos por skill
+### Por que ensaiado e não rodado ao vivo
 
-| Skill | Pergunta | Branch | Faz |
+O fluxo da skill (push + `gh pr create` + CI eventual) leva ~30-60s em condições normais. Em uma banca com tempo apertado, isso vira tempo morto sem narrativa. O ROI maior é:
+
+- Apresentar o **diff que a skill produziu** num PR já aberto (artefato auditável e revisável pela banca).
+- Demonstrar **engenharia em torno de IA** (versionamento, guardrails, ensaio) em vez de teatro de slash-command.
+- Reservar o tempo da call pra fazer **a mudança à mão**, narrando a Strategy/Adapter já preparada — que é exatamente o ponto sênior.
+
+Skills ficam disponíveis caso a banca peça explicitamente *"roda a skill na minha frente"*.
+
+### Skills disponíveis e PRs do ensaio
+
+| Skill | O que faz | Arquivos tocados | PR do ensaio |
 |---|---|---|---|
-| `/add-provider` | Nome (`C`/`D`/...), URL base, formato (`JSON`/`XML`) | `feat/add-provider-<x>` | Cria `Provider<X>Adapter.cs`, registra DI + Polly, atualiza `ProvidersOptions` + `appsettings.json` + `docker-compose.yml`, ajusta `Dok.FakeProviders`. PR no fim. |
-| `/add-debt-type` | Nome do tipo, taxa diária (%), cap opcional (%) | `feat/add-debt-type-<tipo>` | Adiciona enum, atualiza `DebtTypeMapper`, cria `<X>InterestRule`, registra no DI da Application, gera testes em `Dok.Domain.Tests`. PR no fim. |
-| `/change-interest-rate` | Tipo (`ipva`/`multa`), nova taxa diária ou cap | `feat/change-interest-rate-<tipo>` | Edita a constante na rule, ajusta os testes que dependem da constante. PR no fim. |
+| `/add-provider` | Adiciona um `IDebtProvider` à chain (JSON ou XML) | 6 arquivos: novo adapter, `ProvidersOptions`, DI, `appsettings.json`, `docker-compose.yml`, `Dok.FakeProviders/data/` | [#1 — ProviderC (JSON)](https://github.com/ibfm/dok/pull/1) |
+| `/add-debt-type` | Adiciona um `DebtType` com `IInterestRule` | 6 arquivos: enum, mapper, nova rule, DI, testes da rule, `DebtTypeMapperTests` | [#2 — LICENCIAMENTO (0,33%/dia, cap 20%)](https://github.com/ibfm/dok/pull/2) |
+| `/change-interest-rate` | Muda taxa/cap de uma rule existente | 2 arquivos: a rule + os testes que dependem da constante | [#3 — IPVA DailyRate 0,33% → 0,50%](https://github.com/ibfm/dok/pull/3) |
 
-### Fluxo na call
+> *"Esses três PRs são o output literal das skills no ensaio — vocês podem revisar o diff e ver que cada commit é mínimo, validado por build+test antes do push, e descreve no body o que mudou e por que."*
 
-1. **Banca pede**: *"adiciona um Provider C que retorna JSON em `http://localhost:9003`"*.
-2. Você digita `/add-provider` no Claude Code (terminal 3, com o repo aberto).
-3. A skill pergunta nome, URL e formato — você responde nas opções estruturadas.
-4. A skill checa working tree limpo → atualiza `main` → cria `feat/add-provider-c` → faz as edições → roda `dotnet build` + `dotnet test` → commita → push → `gh pr create`.
-5. A skill imprime a URL do PR. Você copia, cola no chat com a banca: *"PR aberto, link aqui"*.
-6. Opcional: refazer o `curl` mostrando o novo provider na chain (precisa rebuild do container, então só se houver tempo).
-7. Se a banca aprovar, `gh pr merge`. Se não, `gh pr close` + `git checkout main` mantém tudo limpo.
+### Fluxo na call (manual, narrando os pontos de extensão)
 
-### Guardrails
-
-- **Pré-flight**: working tree precisa estar limpo. `main` é puxado com `--ff-only` antes do checkout da feature branch.
-- **Branch nomeada por convenção**: `feat/<skill>-<param>` (ex: `feat/add-provider-c`). Nunca toca `main` direto.
-- **Validação obrigatória antes do commit**: `dotnet build` + `dotnet test` (escopo afetado). Falha aborta sem commitar nem abrir PR.
-- **`git add` explícito**: skills listam os arquivos que adicionaram/editaram; nunca `git add -A` (evita acidente de commitar arquivo solto).
-- **Escopo de arquivos restrito**: skills **não tocam** em `Directory.Build.props`, `Dok.slnx`, `Dockerfile`, `Makefile`, `.github/`, `docs/architecture/`, ou `.claude/` (ADR-019 sub-decisão 5).
-- **Ensaiadas 3× antes da banca** em branches descartáveis. PRs do ensaio fechados sem merge.
-
-### Fallback manual (caso uma skill quebre ao vivo)
-
-Os passos manuais cobertos pelas skills, caso seja necessário executar à mão:
-
-#### "Adicione um Provider C" (manual)
-1. Criar `src/Dok.Infrastructure/Providers/ProviderCAdapter.cs` (copiar A ou B como base, ajustar parsing).
-2. Registrar em `Dok.Infrastructure/DependencyInjection.cs`:
+#### Cenário A: "Adicione um Provider C"
+1. *"Aqui o ponto de extensão é o `IDebtProvider`. Cada provider é um adapter — A é JSON (`ProviderAJsonAdapter`), B é XML (`ProviderBXmlAdapter`)."*
+2. Criar `src/Dok.Infrastructure/Providers/ProviderCJsonAdapter.cs` copiando A e renomeando.
+3. Adicionar `ProviderCUrl` em `ProvidersOptions.cs`.
+4. Em `Dok.Infrastructure/DependencyInjection.cs`:
    ```csharp
-   services.AddHttpClient<ProviderCAdapter>().ConfigureHttpClient(...).AddStandardResilienceHandler(...);
-   services.AddTransient<IDebtProvider>(sp => sp.GetRequiredService<ProviderCAdapter>());
+   services.AddHttpClient<ProviderCJsonAdapter>().ConfigureHttpClient(...).AddStandardResilienceHandler(...);
+   services.AddTransient<IDebtProvider>(sp => sp.GetRequiredService<ProviderCJsonAdapter>());
    ```
-3. Adicionar `ProviderCUrl` em `appsettings.json` e em `ProvidersOptions`.
-4. Subir um terceiro fake (ou ajustar `Dok.FakeProviders`).
+5. Adicionar `ProviderCUrl` em `appsettings.json`.
+6. *"E pra demo ao vivo, adiciono o service no `docker-compose.yml` e um data file fake. Mas o ponto: o `DebtProviderChain` já itera sobre `IEnumerable<IDebtProvider>`, então só registrar no DI já entra na chain."*
 
-#### "Adicione tipo de débito LICENCIAMENTO" (manual)
-1. Adicionar valor ao enum em `src/Dok.Domain/DebtType.cs`.
-2. Atualizar `DebtTypeMapper.Parse` e `ToWire`.
-3. Criar `src/Dok.Domain/Rules/LicenciamentoInterestRule.cs` implementando `IInterestRule`.
-4. Registrar em `Dok.Application/DependencyInjection.cs`:
+→ Diff completo do que isso produz: PR #1.
+
+#### Cenário B: "Adicione tipo de débito LICENCIAMENTO"
+1. *"Aqui o ponto de extensão é a Strategy `IInterestRule`. Cada tipo tem sua regra — IPVA tem cap, multa não."*
+2. Adicionar `Licenciamento` em `src/Dok.Domain/DebtType.cs`.
+3. Adicionar case `"LICENCIAMENTO"` em `DebtTypeMapper.Parse` e `ToWire`.
+4. Criar `src/Dok.Domain/Rules/LicenciamentoInterestRule.cs` implementando `IInterestRule` (copiar IPVA se tem cap, multa se não tem).
+5. Em `Dok.Application/DependencyInjection.cs`:
    ```csharp
    services.AddSingleton<IInterestRule, LicenciamentoInterestRule>();
    ```
-5. Adicionar testes em `Dok.Domain.Tests`.
+6. *"E o dicionário `IReadOnlyDictionary<DebtType, IInterestRule>` é construído com `GetServices<IInterestRule>().ToDictionary(r => r.Type)` — auto-discovery, não preciso tocar em mais nada."*
+7. Adicionar testes em `tests/Dok.Domain.Tests/LicenciamentoInterestRuleTests.cs`.
+8. ⚠️ Atenção: `DebtTypeMapperTests.cs` tem `LICENCIAMENTO` listado como exemplo de "unknown type" — se ainda estiver lá, mover pra theory de "known".
 
-#### "Mude a taxa de juros do IPVA" (manual)
-- Ajustar `DailyRate` em `src/Dok.Domain/Rules/IpvaInterestRule.cs`.
-- (Bônus: tornar configurável movendo pra `IOptions<InterestRulesOptions>` no domain.)
+→ Diff completo do que isso produz: PR #2.
 
-> *"A arquitetura foi pensada pra esse tipo de modificação: cada extensão acontece em um arquivo novo, sem tocar em código existente. Strategy + Adapter. As skills só conseguem ser determinísticas porque os pontos de extensão já estavam preparados pelos ADRs anteriores."*
+#### Cenário C: "Mude a taxa de juros do IPVA pra 0,50%"
+1. *"Aqui é uma constante na rule — `DailyRate` em `IpvaInterestRule`."*
+2. Trocar `private const decimal DailyRate = 0.0033m;` por `0.0050m`.
+3. Recalcular qualquer teste em `IpvaInterestRuleTests.cs` que valide um valor não-cap (testes que batem no cap continuam iguais — `min(0.005×1500×121, 300) == 300`).
+4. *"Bônus: pra tornar configurável, eu moveria essas constantes pra `IOptions<InterestRulesOptions>` no domain — a rule receberia injetada em vez de hardcoded."*
+
+→ Diff completo do que isso produz: PR #3.
+
+> *"A arquitetura foi pensada pra esse tipo de modificação: cada extensão é um arquivo novo, sem tocar em código existente. Strategy + Adapter. As skills só conseguem ser determinísticas porque os pontos de extensão já estavam preparados pelos ADRs anteriores — elas demonstram o ROI desses ADRs."*
+
+### Guardrails das skills (caso a banca pergunte ou peça pra rodar)
+
+- **Pré-flight Git**: working tree limpo + `git fetch && checkout main && pull --ff-only` + `git checkout -b feat/<skill>-<param>`.
+- **Branch nomeada por convenção**: `feat/<skill>-<param>` (ex: `feat/add-provider-c`). Nunca toca `main` direto.
+- **Validação obrigatória antes do commit**: `dotnet build` + `dotnet test` (suite completa). Falha aborta sem commitar nem abrir PR.
+- **`git add` explícito**: skills listam os arquivos que adicionaram/editaram; nunca `git add -A`.
+- **Escopo de arquivos restrito**: skills **não tocam** em `Directory.Build.props`, `Dok.slnx`, `Dockerfile`, `Makefile`, `.github/`, `docs/architecture/`, ou `.claude/` (ADR-019 sub-decisão 5).
+- **Output final**: URL do PR aberto via `gh pr create`.
 
 ---
 
@@ -388,8 +401,9 @@ Argumentos guardados na manga, caso a banca questione:
 | Como você lida com divergência entre A e B? | A spec define fallback **sequencial**. Só um provider responde por request. Divergência observável não é parte do fluxo definido. |
 | Por que `extension(...) { }` em vez de `this T param`? | Sintaxe de **extension members do C# 14** (.NET 10). Agrupa membros sobre o mesmo tipo num bloco e habilita **propriedades + operadores** de extensão (que `this T` nunca permitiu). Para os startup helpers atuais o ganho é estético; mas mostra que estou na sintaxe atual da linguagem e abre porta para extensões mais ricas no domínio. |
 | Como o cliente sabe qual provider respondeu? | Header `X-Dok-Provider` na response (visível no Scalar UI). Body permanece literal conforme a spec — header é metadado HTTP, não payload. State holder `ProviderUsage` (Scoped) carrega o nome via DI; middleware lê e adiciona o header via `Response.OnStarting`. |
-| Por que empacotar a modificação ao vivo como skill em vez de prompt ad-hoc? | Determinismo sob pressão de palco e prompt-as-code: a skill é versionada (`.claude/skills/`), ensaiada antes da call, isolada num branch novo, validada por build+test. Resto continua ad-hoc. ADR-019. |
-| As skills "trapaceiam" mostrando IA fazendo o que já estava roteirizado? | Não — elas demonstram engenharia em torno do uso de IA (versionamento, guardrails, ensaio). Para mudança fora do escopo das 3 skills, o ad-hoc continua disponível e a banca pode pedir qualquer coisa. |
+| Por que empacotar a modificação ao vivo como skill em vez de prompt ad-hoc? | Prompt-as-code versionado: a skill vive em `.claude/skills/`, ensaiada antes da call, com guardrails (branch isolado, validação build+test, escopo restrito). PRs do ensaio (#1/#2/#3) são evidência auditável do que cada skill produz. ADR-019. |
+| Por que não rodar a skill ao vivo na banca? | Trade-off de tempo: o fluxo `gh pr create` leva 30-60s sem narrativa enquanto roda. Mais valor pra banca: mostrar o **diff já produzido** num PR aberto + fazer a mudança à mão na call narrando os pontos de extensão. Skill fica disponível se pedirem explicitamente. |
+| As skills "trapaceiam" mostrando IA fazendo o que já estava roteirizado? | Não — elas demonstram engenharia em torno do uso de IA (versionamento, guardrails, ensaio, PR como artefato auditável). Para mudança fora do escopo das 3 skills, o ad-hoc continua disponível e a banca pode pedir qualquer coisa. |
 
 ---
 
@@ -413,6 +427,6 @@ Argumentos guardados na manga, caso a banca questione:
 - [ ] `curl http://localhost:8080/api/v1/debitos` → 200 com payload da spec
 - [ ] Browser aberto em `http://localhost:8080/scalar`
 - [ ] 3 terminais arrumados (curl / logs / editor)
-- [ ] Skills do item 9 ensaiadas 3× em branches descartáveis (ADR-019)
-- [ ] Working tree limpo em `main` (skills exigem isso pra criar branch novo)
+- [ ] Skills do item 9 com PRs de ensaio abertos (#1/#2/#3) — links prontos pra colar na call
+- [ ] Working tree limpo em `main` (caso a banca insista em rodar uma skill ao vivo)
 - [ ] Cabeça respirando — você sabe defender cada decisão. Boa! 🚀
