@@ -1,4 +1,4 @@
-using Dok.Api.Time;
+using Dok.Application;
 
 namespace Dok.Api.Extensions;
 
@@ -7,18 +7,22 @@ internal static class TimeProviderExtensions
     extension(IServiceCollection services)
     {
         /// <summary>
-        /// Registra o <see cref="TimeProvider"/> da aplicação. Por padrão usa
-        /// <see cref="TimeProvider.System"/> (relógio real). Se <c>Domain:ReferenceDate</c>
-        /// estiver configurado, usa um <see cref="FixedTimeProvider"/> nessa data — útil
-        /// para a demo bater com os exemplos numéricos da spec (2024-05-10).
+        /// Registra o <see cref="TimeProvider"/> da aplicação como
+        /// <see cref="TimeProvider.System"/> (sempre relógio real). Quando
+        /// <c>Domain:ReferenceDate</c> estiver configurado, em vez de fixar o
+        /// <see cref="TimeProvider"/> global, fixa apenas o <c>IDebtsClock</c>
+        /// usado pelo <c>DebtsCalculator</c> — assim os cálculos de juros batem
+        /// com a data da spec, mas o Polly continua medindo tempo real para a
+        /// sliding window do circuit breaker.
         /// </summary>
         public IServiceCollection AddDokTimeProvider(IConfiguration config)
         {
+            services.AddSingleton(TimeProvider.System);
+
             var fixedDate = config.GetValue<DateTimeOffset?>("Domain:ReferenceDate");
-            TimeProvider clock = fixedDate is { } d
-                ? new FixedTimeProvider(d)
-                : TimeProvider.System;
-            services.AddSingleton(clock);
+            if (fixedDate is { } d)
+                services.SetDebtsReferenceDate(DateOnly.FromDateTime(d.UtcDateTime));
+
             return services;
         }
     }

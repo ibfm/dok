@@ -32,10 +32,9 @@ public sealed class WireMockApiFactory : WebApplicationFactory<Program>
         });
         builder.ConfigureTestServices(services =>
         {
-            // Fixa a data em 2024-05-10T00:00:00Z conforme spec
-            var fixedClock = new FakeTimeProvider(
-                new DateTimeOffset(2024, 5, 10, 0, 0, 0, TimeSpan.Zero));
-            services.AddSingleton<TimeProvider>(fixedClock);
+            // Fixa a data dos cálculos em 2024-05-10 conforme spec, sem afetar o
+            // TimeProvider global (que o Polly usa para a sliding window do CB).
+            services.SetDebtsReferenceDate(new DateOnly(2024, 5, 10));
 
             // Timeouts agressivos pra testes não esperarem Polly real
             services.PostConfigureAll<Microsoft.Extensions.Http.Resilience.HttpStandardResilienceOptions>(o =>

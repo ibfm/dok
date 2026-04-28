@@ -5,12 +5,12 @@ namespace Dok.Application;
 public sealed class DebtsCalculator(
     IDebtProviderChain providers,
     IReadOnlyDictionary<DebtType, IInterestRule> rules,
-    TimeProvider clock) : IDebtsCalculator
+    IDebtsClock clock) : IDebtsCalculator
 {
     public async Task<CalculatorResult> CalculateAsync(Plate plate, CancellationToken ct)
     {
         var debts = await providers.FetchDebtsAsync(plate, ct);
-        var today = DateOnly.FromDateTime(clock.GetUtcNow().UtcDateTime);
+        var today = clock.Today;
 
         var updated = new List<UpdatedDebt>(debts.Count);
         foreach (var debt in debts)

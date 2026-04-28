@@ -8,7 +8,7 @@ public class DebtsCalculatorTests
         [DebtType.Multa] = new MultaInterestRule(),
     };
 
-    private readonly DateTimeOffset _fixed = new(2024, 5, 10, 0, 0, 0, TimeSpan.Zero);
+    private readonly IDebtsClock _clock = new FixedDebtsClock(new DateOnly(2024, 5, 10));
 
     [Fact]
     public async Task CalculateAsync_with_two_debts_returns_canonical_response_for_ABC1234()
@@ -21,8 +21,7 @@ public class DebtsCalculatorTests
                 new(DebtType.Multa, Money.Of(300.50m), new DateOnly(2024, 2, 15)),
             });
 
-        var clock = new FakeTimeProvider(_fixed);
-        var calculator = new DebtsCalculator(providers, _rules, clock);
+        var calculator = new DebtsCalculator(providers, _rules, _clock);
 
         var result = await calculator.CalculateAsync(Plate.Parse("ABC1234"), default);
 
@@ -49,8 +48,7 @@ public class DebtsCalculatorTests
             .FetchDebtsAsync(Arg.Any<Plate>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<Debt>());
 
-        var clock = new FakeTimeProvider(_fixed);
-        var calculator = new DebtsCalculator(providers, _rules, clock);
+        var calculator = new DebtsCalculator(providers, _rules, _clock);
 
         var result = await calculator.CalculateAsync(Plate.Parse("ABC1234"), default);
         result.Debts.ShouldBeEmpty();
