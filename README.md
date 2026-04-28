@@ -86,10 +86,10 @@ Tudo configurável vive em `src/Dok.Api/appsettings.json` (com overrides em `app
   },
   "Resilience": {
     "TotalTimeoutSeconds": 10,
-    "PerAttemptTimeoutSeconds": 3,
+    "PerAttemptTimeoutSeconds": 1,
     "RetryCount": 2,
     "RetryBaseDelayMs": 200,
-    "CircuitBreakerFailures": 5,
+    "CircuitBreakerFailures": 2,
     "CircuitBreakerWindowSeconds": 30,
     "CircuitBreakerBreakDurationSeconds": 30
   },
@@ -188,7 +188,7 @@ Dok.slnx
 - **.NET 10 LTS** + ASP.NET Core Controllers (ADR-001/002/003).
 - **Hexagonal pragmático** com 4 projetos (`Domain` puro, sem `PackageReference` nem `ProjectReference`) — boundaries enforçadas pelo compilador (ADR-004/007).
 - **Value Objects** para `Plate` (regex Mercosul/antigo + `.Masked()` LGPD) e `Money` (HALF_UP, JSON-string) — SSOT de validação e formatação (ADR-006).
-- **Resiliência via `Microsoft.Extensions.Http.Resilience`** (Polly v8 internamente): timeout total 10s, retry 2× com jitter, circuit breaker 5/30s isolado por provider, per-attempt timeout 3s (ADR-009).
+- **Resiliência via `Microsoft.Extensions.Http.Resilience`** (Polly v8 internamente): timeout total 10s, retry 2× com jitter, circuit breaker **2/30s** isolado por provider, per-attempt timeout **1s** (ADR-009 — valores revisados após ensaio empírico do fallback ao vivo).
 - **Fallback inter-provider**: `DebtProviderChain` itera Provider A → B; circuit breaker isolado garante fallback sem latência quando A está degradado.
 - **Logging Serilog** com `IDestructuringPolicy<Plate>` que **mascara automaticamente** placas em todos os logs (LGPD), mais TraceId via W3C TraceContext (ADR-010).
 - **`TimeProvider`** do BCL .NET 8+ (não `IClock` custom) com `FakeTimeProvider` em testes para fixar `2024-05-10T00:00:00Z` (ADR-012).

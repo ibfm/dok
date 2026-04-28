@@ -51,15 +51,40 @@ A pipeline canônica em sistemas HTTP segue (do mais externo para o mais interno
 - **Circuit Breaker**: depois de N falhas em janela Y, "abre" e rejeita rapidamente novas chamadas por Z segundos — protege o provedor degradado e libera recursos do nosso lado.
 - **Per-Attempt Timeout** (innermost): cada chamada HTTP tem seu próprio limite, separado do total.
 
-### Parâmetros propostos (ajustáveis em `appsettings.json`)
+### Parâmetros (ajustáveis em `appsettings.json`)
 
-| Política | Valor proposto | Justificativa |
+| Política | Valor | Justificativa |
 |---|---|---|
 | Total timeout | 10s | Cliente HTTP do desafio espera resposta síncrona — não pode esperar para sempre |
 | Retry attempts | 2 (3 chamadas no total) | Falhas transientes geralmente passam em 1-2 retentativas; mais que isso é desperdício |
 | Retry backoff | exponencial com jitter (200ms base, fator 2) | Padrão da indústria; jitter evita "thundering herd" |
-| Circuit breaker | 5 falhas em 30s → aberto por 30s | Conservador; em produção real ajustaria por SLA do provedor |
-| Per-attempt timeout | 3s | Se provedor não respondeu em 3s, é falha — partir para retry/fallback |
+| Circuit breaker | **2 falhas em 30s** → aberto por 30s | Ver "Revisão empírica" abaixo |
+| Per-attempt timeout | **1s** | Ver "Revisão empírica" abaixo |
+
+### Revisão empírica (2026-04-27, durante ensaio da apresentação)
+
+A versão original deste ADR propunha `5 falhas em 30s` + `per-attempt 3s`, descritos como *"conservador; em produção real ajustaria por SLA do provedor"*. Ao testar o cenário ao vivo (`docker compose stop provider-a` + curl manual), descobri que **o circuit breaker nunca abria** — cada request com A morto demorava ~10s eternos.
+
+**Causa raiz** (verificada com logs do `Polly`):
+
+- Cada request com A indisponível → 3 attempts (1 + 2 retries) × `PerAttemptTimeout=3s` ≈ **9-10s por request**.
+- Cliente sequencial faz uma request a cada ~10s.
+- Janela do CB = 30s; threshold = 5 falhas (1 por request, no nível do retry consolidado).
+- 5 requests sequenciais ocupam ~50s → quando a 5ª falha entra na janela, a 1ª **já saiu**.
+- O CB nunca acumula 5 falhas simultâneas → nunca abre → `BrokenCircuitException` nunca é lançada → `gh pr create` digo, **fallback** sempre paga o preço dos 10s.
+
+Confirmado em paralelo: 5 requests **paralelas** (≈3s cada, comprimidas) **disparam** o CB normalmente, e as próximas viram instantâneas. O bug é específico do uso sequencial real.
+
+**Decisão revisada**:
+
+- `PerAttemptTimeoutSeconds: 3 → 1`. Justificativa: 3s era folgado pra rede LAN em demo; 1s já cobre P99 de provedores HTTP saudáveis.
+- `CircuitBreakerFailures: 5 → 2`. Justificativa: a spec não obriga "5 falhas" (o número original era escolha minha); 2 é o mínimo prático que abre o CB depois de 1 request "perdida" + 1 attempt da seguinte. Cobre cenário sequencial real.
+- Janela e break duration mantidos em 30s — tempo suficiente pro provedor degradado se recuperar antes do half-open.
+
+**Resultado observado** com a config nova (mesmo cenário sequencial):
+- 1ª request com A morto: ~3s (3 × 1s).
+- 2ª request: dispara o CB no 2º attempt → ~1-2s, vai pro B.
+- 3ª+: CB aberto → ~50ms.
 
 ### Crucial: circuit breaker **por provider**
 
@@ -69,11 +94,11 @@ Cada `HttpClient` (Provider A, Provider B) registra seu **próprio** circuit bre
 
 - **Lib**: `Microsoft.Extensions.Http.Resilience` (que usa Polly v8 internamente).
 - **Pipeline canônica** (do mais externo para o mais interno): Total Timeout → Retry com backoff exponencial e jitter → Circuit Breaker → Per-Attempt Timeout → HTTP call.
-- **Parâmetros iniciais** (configuráveis em `appsettings.json`):
+- **Parâmetros** (configuráveis em `appsettings.json`):
   - Total timeout: 10s.
   - Retry: 2 tentativas, backoff base 200ms, fator 2, com jitter.
-  - Circuit breaker: 5 falhas em 30s → aberto por 30s.
-  - Per-attempt timeout: 3s.
+  - Circuit breaker: **2 falhas em 30s → aberto por 30s** (revisado após ensaio — ver seção "Revisão empírica").
+  - Per-attempt timeout: **1s** (revisado após ensaio — ver seção "Revisão empírica").
 - **Circuit breaker isolado por provider**: cada `HttpClient` nomeado (`"providerA"`, `"providerB"`) tem sua própria instância — degradação de A não afeta B.
 
 ## Justificativa
