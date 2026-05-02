@@ -77,10 +77,11 @@ ADRs que cobrem decisões compostas (ex: ADR-009 sobre resiliência, com camadas
 | 017 | Configuração: IOptions tipado + ValidateOnStart | aceito | [ADR-017](ADR-017-Configuracao.md) |
 | 018 | Empacotamento: Dockerfile multi-stage + docker-compose + Makefile | aceito | [ADR-018](ADR-018-Empacotamento.md) |
 | 019 | Skills de modificação ao vivo (Claude Code) para a banca | aceito | [ADR-019](ADR-019-Skills-Modificacao-Ao-Vivo.md) |
+| 020 | Estratégia para divergência entre provedores: sequential first-success | aceito | [ADR-020](ADR-020-Estrategia-Divergencia-Providers.md) |
 
 ## Como ler
 
-- **Leitura linear (apresentação)**: percorrer ADR-001 a ADR-018 em ordem. Cada um leva 2-5 minutos. Total: ~1h.
+- **Leitura linear (apresentação)**: percorrer ADR-001 a ADR-020 em ordem. Cada um leva 2-5 minutos. Total: ~1h.
 - **Consulta pontual**: usar a tabela acima para ir direto ao tópico.
 - **Auditoria de decisão específica**: cada ADR é autocontido — pode ser lido isoladamente sem dependência de leitura anterior.
 

@@ -49,7 +49,7 @@ dotnet run --project src/Dok.Api
 ### Caminho 3 — Testes
 
 ```bash
-dotnet test         # 57 testes (Domain 39 + Application 7 + Integration 11)
+dotnet test         # 64 testes (Domain 43 + Application 7 + Integration 14)
 make test           # equivalente
 ```
 
@@ -143,6 +143,9 @@ A maioria dos settings é lida **uma única vez no startup** — alterações ex
 | `POST` | `/api/v1/debitos` | Consulta + simulação. Body: `{"placa":"ABC1234"}` |
 | `GET`  | `/openapi/v1.json` | Spec OpenAPI 3 |
 | `GET`  | `/scalar`          | UI interativa |
+| `GET`  | `/metrics`         | Counters Prometheus (provider chain) — ver [Observabilidade](#observabilidade) |
+| `GET`  | `/health/live`     | Liveness probe (`200 OK` se o processo subiu) |
+| `GET`  | `/health/ready`    | Readiness probe (`200 OK` se a app está pronta a servir) |
 
 ### Códigos de erro
 
@@ -189,7 +192,8 @@ Dok.slnx
 - **Hexagonal pragmático** com 4 projetos (`Domain` puro, sem `PackageReference` nem `ProjectReference`) — boundaries enforçadas pelo compilador (ADR-004/007).
 - **Value Objects** para `Plate` (regex Mercosul/antigo + `.Masked()` LGPD) e `Money` (HALF_UP, JSON-string) — SSOT de validação e formatação (ADR-006).
 - **Resiliência via `Microsoft.Extensions.Http.Resilience`** (Polly v8 internamente): timeout total 10s, retry 2× com jitter, circuit breaker **2/30s** isolado por provider, per-attempt timeout **1s** (ADR-009 — valores revisados após ensaio empírico do fallback ao vivo).
-- **Fallback inter-provider**: `DebtProviderChain` itera Provider A → B; circuit breaker isolado garante fallback sem latência quando A está degradado.
+- **Fallback inter-provider**: `DebtProviderChain` itera Provider A → B; circuit breaker isolado garante fallback sem latência quando A está degradado. O catch é **específico por tipo de exceção** (`IsProviderFailure`: `HttpRequestException`, `JsonException`, `XmlException`, `TimeoutRejectedException`, `BrokenCircuitException`, `TaskCanceledException`) — bugs não-tratados (`NullReferenceException` etc.) propagam para 500 em vez de mascararem como falha de provider.
+- **Validação de `Content-Type`** nos adapters (`ProviderAJsonAdapter`/`ProviderBXmlAdapter`): provider retornando 200 com payload de outro tipo (HTML de erro com `Content-Type` errado, gateway respondendo `text/plain`, etc.) lança `HttpRequestException` que dispara fallback em vez de quebrar o deserializer.
 - **Logging Serilog** com `IDestructuringPolicy<Plate>` que **mascara automaticamente** placas em todos os logs (LGPD), mais TraceId via W3C TraceContext (ADR-010).
 - **`TimeProvider`** do BCL .NET 8+ (não `IClock` custom) com `FakeTimeProvider` em testes para fixar `2024-05-10T00:00:00Z` (ADR-012).
 - **Testes**: xUnit + Shouldly + NSubstitute + builders manuais. WireMock real nos integration tests para exercitar HTTP/Polly de verdade (ADR-013).
@@ -197,7 +201,9 @@ Dok.slnx
 - **Limites de borda HTTP**: body 1 MiB, `JsonUnmappedMemberHandling.Disallow` (ADR-015).
 - **OpenAPI** nativo (.NET 9+ `Microsoft.AspNetCore.OpenApi`) + UI **Scalar** moderna; VOs declarados como string com regex/example (ADR-016).
 - **`IOptions<T>` tipado com `ValidateOnStart`** — config inválida não deixa o app subir (ADR-017).
-- **Skills de modificação ao vivo (Claude Code)** versionadas em `.claude/skills/` — `/add-provider`, `/add-debt-type`, `/change-interest-rate` automatizam os 3 cenários do item 9 da apresentação com guardrails de branch isolado e validação build+test (ADR-019).
+- **Observabilidade via `System.Diagnostics.Metrics`** (BCL nativo) com exporter **Prometheus** (`OpenTelemetry.Exporter.Prometheus.AspNetCore`). Endpoint `GET /metrics` expõe counters `dok.providers.{requests, failures, fallback, all_unavailable}` taggeados por provider, outcome e exception type. Detalhe em [Observabilidade](#observabilidade).
+- **Estratégia para divergência entre provedores** documentada em ADR-020: sequential first-success (não há cross-check ativo), com mitigações operacionais via header `X-Dok-Provider` + métricas por provider.
+- **Skills de modificação ao vivo (Claude Code)** versionadas em `.claude/skills/` — `/add-provider`, `/add-debt-type`, `/change-interest-rate` automatizam os 3 cenários do item 9 da apresentação com guardrails de branch isolado e validação build+test, terminando em `gh pr create` (ADR-019). PRs do ensaio: [#4](https://github.com/ibfm/dok/pull/4), [#5](https://github.com/ibfm/dok/pull/5), [#6](https://github.com/ibfm/dok/pull/6).
 
 ## Trade-offs
 
@@ -207,15 +213,44 @@ Dok.slnx
 - **Interpretação estrita do 422**: spec tem ambiguidade entre "qualquer tipo desconhecido lança 422" vs "só se TODOS forem desconhecidos". Escolhi estrita: silenciar tipos desconhecidos gera dano real ao usuário (ele paga menos do que deve). Detalhamento na seção [Decisões interpretativas](#decisões-interpretativas-onde-a-spec-é-ambígua) abaixo.
 - **Multi-projeto (4 src + 3 tests)**: 5 minutos extras de setup vs convenção em pastas. O ganho — `Dok.Domain.csproj` com **zero refs**, prova visual de domínio puro — paga aluguel para apresentação sênior.
 
+## Observabilidade
+
+Métricas via `IMeterFactory` (BCL `System.Diagnostics.Metrics`) expostas em `GET /metrics` no formato Prometheus text exposition (via `OpenTelemetry.Exporter.Prometheus.AspNetCore`). Sem dependência adicional de Grafana/Prometheus; o endpoint é raspável por qualquer scraper compatível **e** legível direto no browser.
+
+### Counters do meter `Dok.Providers`
+
+| Counter | Tags | O que conta |
+|---|---|---|
+| `dok_providers_requests_total` | `provider`, `outcome=success\|failure` | Cada chamada feita a um provider, por desfecho |
+| `dok_providers_failures_total` | `provider`, `exception_type` | Falhas tratadas como "provider degradado" (HTTP, JSON, XML, timeout, CB) — separadas por tipo de exceção pra correlacionar com causa raiz |
+| `dok_providers_fallback_total` | `from_provider` | Cada vez que a chain pula do provider X para o próximo |
+| `dok_providers_all_unavailable_total` | (sem tags) | **Toda 503** retornada porque todos os providers da chain falharam — sinal direto pra alerta P1 |
+
+### Como ler em demo
+
+```bash
+curl -s http://localhost:8080/metrics | grep dok_providers
+```
+
+A correlação típica: se `failures{provider="ProviderA"}` e `failures{provider="ProviderB"}` sobem ao mesmo tempo, é sintoma de problema **compartilhado** (DNS, certificado, firewall) — não falha pontual de provider. Esse sinal é o que vira regra de alerta correlacional em produção.
+
+Inspeção alternativa via CLI sem endpoint HTTP (útil quando rodando local sem Docker):
+
+```bash
+dotnet tool install -g dotnet-counters
+dotnet-counters monitor -n Dok.Api Dok.Providers
+```
+
 ## Melhorias futuras
 
 - **RFC 7807 ProblemDetails** quando o cliente puder consumir (alternativo ao payload literal da spec).
 - **Imagens chiseled** (`mcr.microsoft.com/dotnet/aspnet:10.0-noble-chiseled`) para reduzir superfície de ataque (~30 MB final).
 - **Seq local** como sink do Serilog para experiência ainda melhor de inspeção em demo.
 - **Rate limiting** na API (`Microsoft.AspNetCore.RateLimiting`).
-- **Health checks** (`/health/live`, `/health/ready`).
 - **Property-based tests** ampliados com `FsCheck.Xunit` (HALF_UP, monotonicidade das rules).
-- **OpenTelemetry** para traces e métricas (já temos a base de TraceId).
+- **OpenTelemetry traces** (métricas já estão expostas via `/metrics` — falta o lado de tracing distribuído com `Activity`/`ActivitySource` e exportador OTLP).
+- **Smoke E2E em CI** com `docker compose up && curl` real (hoje os integration tests usam `TestServer`, que não exercita Kestrel real — body 413, HTTP/2, sockets).
+- **Métricas HTTP nativas do ASP.NET Core** (`Microsoft.AspNetCore.Hosting`) plugadas no mesmo pipeline OTel — daria latência por status code e contagem por rota gratuitamente.
 
 ## Decisões interpretativas (onde a spec é ambígua)
 
@@ -229,7 +264,7 @@ Dok.slnx
 
 A spec pede algumas descrições sem exigir implementação. Para esses, registro aqui a estratégia:
 
-- **Divergência de dados entre provedores** (*"descreva sua estratégia, mesmo que não a implemente"*): a spec define fallback **sequencial** (*"tente o próximo na ordem configurada"*). Nesse modelo, **divergência entre provedores não é observável** em uma mesma request — apenas um provider fornece dados a cada chamada (o primeiro que respondeu com sucesso). Logo, a "estratégia de divergência" se reduz à própria arquitetura da chain: **A é tentado primeiro; se falhar, B fornece os dados** — e essa é a única visão de mundo do consumidor naquela request. Caso uma evolução futura troque o fallback sequencial por consulta paralela, novas estratégias precisariam ser definidas (e essa mudança, em si, seria uma divergência da spec).
+- **Divergência de dados entre provedores** (*"descreva sua estratégia, mesmo que não a implemente"*) — documentado formalmente em [ADR-020](docs/architecture/ADR-020-Estrategia-Divergencia-Providers.md). Decisão: **sequential first-success** (o primeiro provider que responder com sucesso encerra a consulta; não há cross-check ativo entre fontes). Trade-off explícito: latência mínima e custo de uma chamada por consulta no caminho feliz, em troca de não detectar divergência ativa. Três alternativas avaliadas e rejeitadas (paralelo+cross-check, verify-on-suspect-zero, authoritative-per-type) com justificativas. Mitigações operacionais: header `X-Dok-Provider` no response identifica a fonte, e as métricas `dok_providers_failures{provider}` permitem detecção post-hoc de degradação prolongada.
 
 ## Itens opcionais implementados ("Seria bacana se")
 
@@ -237,11 +272,12 @@ A spec lista vários itens em "Seria bacana se" — opcionais, mas implementados
 
 - **Simulação de falha de provedor** (timeout/indisponibilidade) via WireMock.Net.
 - **Retry com backoff e circuit breaker** via `Microsoft.Extensions.Http.Resilience` (Polly v8 internamente). Circuit breaker isolado por provider.
-- **Testes automatizados**: 57 ao todo (Domain unitário + Application com mocks + Integration com WireMock + WebApplicationFactory).
+- **Testes automatizados**: 64 ao todo (Domain 43 + Application 7 + Integration 14, este último com WireMock + WebApplicationFactory).
 - **Logs estruturados** Serilog com **mascaramento de placa para LGPD** (`IDestructuringPolicy<Plate>` que aplica `.Masked()` automaticamente). Em casos de erro de validação (`InvalidPlateException`), o raw também não é logado — apenas o tamanho.
 - **Padrões nomeados** (Strategy, Adapter, Ports & Adapters / Hexagonal pragmático) — documentados nos ADRs e no README.
 - **Limite de tamanho do body** (1 MiB, configurável via `RequestLimits:MaxBodyBytes`) e **rejeição de campos desconhecidos** (`JsonUnmappedMemberHandling.Disallow`).
 - **Health checks**: `GET /health/live` e `GET /health/ready` (200 OK quando o app está saudável).
+- **Métricas Prometheus** via `IMeterFactory` + exporter OTel em `GET /metrics` (não pedido pela spec, mas zero custo de implementação dado o BCL nativo — ver [Observabilidade](#observabilidade)).
 
 ## Decisões fora do escopo direto da spec
 
