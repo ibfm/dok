@@ -10,6 +10,7 @@ public static class DependencyInjection
     {
         services.AddSingleton<IInterestRule, IpvaInterestRule>();
         services.AddSingleton<IInterestRule, MultaInterestRule>();
+        services.AddSingleton<IInterestRule, LicenciamentoInterestRule>();
         services.AddSingleton<IReadOnlyDictionary<DebtType, IInterestRule>>(sp =>
             sp.GetServices<IInterestRule>().ToDictionary(r => r.Type));
 
