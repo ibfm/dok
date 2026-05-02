@@ -23,6 +23,18 @@ services:
       Provider__ContentType: application/xml
     ports: ["9002:9002"]
 
+  provider-c:
+    build:
+      context: .
+      dockerfile: src/Dok.FakeProviders/Dockerfile
+    container_name: dok-provider-c
+    environment:
+      Provider__Name: ProviderC
+      Provider__Port: "9003"
+      Provider__DataFile: data/providerC.xml
+      Provider__ContentType: application/xml
+    ports: ["9003:9003"]
+
   api:
     build:
       context: .
@@ -32,6 +44,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       Providers__ProviderAUrl: http://provider-a:9001
       Providers__ProviderBUrl: http://provider-b:9002
+      Providers__ProviderCUrl: http://provider-c:9003
       # Fixa a data em 2024-05-10 conforme spec, garantindo que os exemplos
       # numéricos do enunciado (1800.00, 555.93, 2355.93) batam na demo.
       # Para usar relógio real, remova esta linha.
@@ -39,4 +52,5 @@ services:
     depends_on:
       - provider-a
       - provider-b
+      - provider-c
     ports: ["8080:8080"]

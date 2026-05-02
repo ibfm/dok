@@ -42,9 +42,18 @@ public static class DependencyInjection
             })
             .AddStandardResilienceHandler(o => ApplyResilience(o, resilience));
 
-        // Ordem importa: A antes de B para o fallback
+        services.AddHttpClient<ProviderCXmlAdapter>()
+            .ConfigureHttpClient((sp, client) =>
+            {
+                var opts = sp.GetRequiredService<IOptions<ProvidersOptions>>().Value;
+                client.BaseAddress = new Uri(opts.ProviderCUrl);
+            })
+            .AddStandardResilienceHandler(o => ApplyResilience(o, resilience));
+
+        // Ordem importa: A antes de B antes de C para o fallback
         services.AddTransient<IDebtProvider>(sp => sp.GetRequiredService<ProviderAJsonAdapter>());
         services.AddTransient<IDebtProvider>(sp => sp.GetRequiredService<ProviderBXmlAdapter>());
+        services.AddTransient<IDebtProvider>(sp => sp.GetRequiredService<ProviderCXmlAdapter>());
 
         services.AddScoped<ProviderUsage>();
         services.AddSingleton<ProviderMetrics>();
