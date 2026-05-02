@@ -2,8 +2,8 @@ namespace Dok.Domain.Rules;
 
 public sealed class IpvaInterestRule : IInterestRule
 {
-    /// <summary>0,33% ao dia conforme HomeTest §1 — Juros por atraso (IPVA).</summary>
-    private const decimal DailyInterestRate = 0.0033m;
+    /// <summary>0,50% ao dia conforme HomeTest §1 — Juros por atraso (IPVA).</summary>
+    private const decimal DailyInterestRate = 0.0050m;
 
     /// <summary>20% do valor original aplicado ao <em>valor de juros</em>, não ao total.</summary>
     private const decimal InterestCapRatio = 0.20m;
