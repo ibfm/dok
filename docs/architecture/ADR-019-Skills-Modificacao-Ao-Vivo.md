@@ -177,14 +177,22 @@ O ensaio é parte da entrega. Branches de teste podem ser deletados depois; o qu
 6. **Escopo defensivo**: limitar skills a pontos de extensão já desenhados evita o risco real de empacotar mudança em código sensível (resilience, contrato HTTP) onde o erro silencioso seria caro. Híbrido (skills + ad-hoc) cobre o resto.
 7. **Mensagem para a banca**: *"O item 9 vocês podem disparar com `/add-provider`, `/add-debt-type` ou `/change-interest-rate`. Cada skill abre uma feature branch a partir da main, faz as edições, valida com build+test, e termina abrindo um PR no GitHub. No fim eu mando o link aqui pra vocês revisarem o diff. Se quiserem algo fora desses 3, eu disparo ad-hoc."*
 
+## Limitação reconhecida
+
+A skill `/change-interest-rate` ajusta a constante na rule **e** os testes que dependem dela (testes de regra são `value-coupled` à própria taxa, então alterar uma sem a outra deixa o build vermelho — desejável como tripwire). Consequência: se a IA gerar uma taxa numericamente errada (ex: `0.0040` em vez de `0.0033` solicitado), o build/test verde **não detecta** porque a skill atualizou os esperados em conjunto. Defesa final é o **review humano do PR** que a skill abre — por isso a skill termina abrindo PR via `gh pr create`, não fazendo merge. O link do PR é o output visível para a banca exatamente para essa inspeção.
+
+Em produção, defesa adicional viria de um **golden-test layer** com valores literais blindados das skills (cenários da spec HomeTest §1: `1500/121dias → 1800.00`, `300.50/85dias → 555.93`) que residem em arquivo fora do escopo de edição da skill — caso a IA mude a taxa errada, esses testes quebram independentemente. Não está implementado nesse repo porque os testes de regra atuais já incluem os exemplos literais da spec; movê-los para camada blindada é trabalho mecânico se a estratégia for escalada para mais rules.
+
+**Resposta pronta para a banca:** *"A skill é guardrail operacional, não verificador semântico. Se a banca pedir taxa 0,5% e a IA escrever 0,4%, build verde não captura porque a skill mexe nos próprios testes que validam a constante. Defesa final é review do PR — por isso a skill termina abrindo PR, não fazendo merge. Em produção eu adicionaria uma camada de golden tests blindada das skills com os valores literais da spec, fora do raio de edição da IA."*
+
 ## Status de implementação
 
-- [ ] `.claude/skills/add-provider/SKILL.md`
-- [ ] `.claude/skills/add-debt-type/SKILL.md`
-- [ ] `.claude/skills/change-interest-rate/SKILL.md`
-- [ ] Ensaio 3× para cada skill (registro em commit message ou arquivo de log temporário).
-- [ ] `APRESENTACAO.md` item 9 reescrito.
-- [ ] `README.md` linka as skills na seção de decisões.
-- [ ] `PLANO-IMPLEMENTACAO.md` adiciona estágio dedicado.
+- [x] `.claude/skills/add-provider/SKILL.md`
+- [x] `.claude/skills/add-debt-type/SKILL.md`
+- [x] `.claude/skills/change-interest-rate/SKILL.md`
+- [x] Ensaio 3× para cada skill — refinamentos aplicados em commit `4acb22d` (*docs(skills): refine 3 skills with ensaio findings*).
+- [x] `APRESENTACAO.md` item 9 reescrito — commit `2bf760b` (*docs(apresentacao): reframe item 9 — skills as rehearsed evidence, not live performance*).
+- [x] `README.md` linka as skills na seção de decisões.
+- [x] `PLANO-IMPLEMENTACAO.md` adiciona estágio dedicado.
 
 ---

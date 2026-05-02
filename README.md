@@ -2,7 +2,7 @@
 
 API HTTP em **.NET 10** que consulta múltiplos provedores externos de débitos veiculares (IPVA, multa), normaliza, calcula juros simples e simula formas de pagamento (PIX e cartão de crédito).
 
-Implementação do desafio HomeTest (Backend Engineer Sênior). Spec autoritativa em [`docs/HomeTest-2.pdf`](docs/HomeTest-2.pdf). Decisões arquiteturais documentadas em [`docs/architecture/`](docs/architecture/) — 19 ADRs aceitos.
+Implementação do desafio HomeTest (Backend Engineer Sênior). Spec autoritativa em [`docs/HomeTest-2.pdf`](docs/HomeTest-2.pdf). Decisões arquiteturais documentadas em [`docs/architecture/`](docs/architecture/) — 20 ADRs aceitos.
 
 ## Como rodar
 
@@ -171,7 +171,7 @@ Dok.slnx
 │   └── Dok.Integration.Tests/    WebApplicationFactory + WireMock.Net
 ├── docs/
 │   ├── HomeTest.pdf, HomeTest-2.pdf   spec do desafio
-│   ├── architecture/                  19 ADRs (decisões e tradeoffs)
+│   ├── architecture/                  20 ADRs (decisões e tradeoffs)
 │   ├── APRESENTACAO.md                roteiro da banca
 │   └── PLANO-IMPLEMENTACAO.md         plano de execução
 ├── .claude/

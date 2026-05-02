@@ -11,7 +11,7 @@ cd /home/iberefm/ibfm/dok
 
 # 1) Garantir que está verde
 dotnet test
-# Esperado: 57/57 passing (Domain 39 + Application 7 + Integration 11)
+# Esperado: 64/64 passing (Domain 43 + Application 7 + Integration 14)
 
 # 2) Subir o ambiente Docker
 docker compose up --build -d
@@ -398,7 +398,7 @@ Argumentos guardados na manga, caso a banca questione:
 | Por que NSubstitute e não Moq? | Moq teve a polêmica SponsorLink (ago/2023). NSubstitute evita o drama. |
 | Por que payload literal e não RFC 7807 ProblemDetails? | Spec dita formato literal. Conformidade com a spec prevalece. RFC 7807 fica como melhoria futura. |
 | Interpretação estrita do 422 — por quê? | Texto 1 da spec é a regra geral (qualquer tipo desconhecido lança); texto 2 é caso particular. Silenciar tipos desconhecidos viola "Não silenciar". |
-| Como você lida com divergência entre A e B? | A spec define fallback **sequencial**. Só um provider responde por request. Divergência observável não é parte do fluxo definido. |
+| Como você lida com divergência entre A e B? | A spec pede a **descrição da estratégia**, não a implementação. Adotei sequential first-success: alternativas (paralelo+cross-check, verify-on-suspect-zero, authoritative-per-type) e trade-offs documentados em **ADR-020**. Mitigação operacional: header `X-Dok-Provider` + métricas por provider permitem detecção post-hoc. |
 | Por que `extension(...) { }` em vez de `this T param`? | Sintaxe de **extension members do C# 14** (.NET 10). Agrupa membros sobre o mesmo tipo num bloco e habilita **propriedades + operadores** de extensão (que `this T` nunca permitiu). Para os startup helpers atuais o ganho é estético; mas mostra que estou na sintaxe atual da linguagem e abre porta para extensões mais ricas no domínio. |
 | Como o cliente sabe qual provider respondeu? | Header `X-Dok-Provider` na response (visível no Scalar UI). Body permanece literal conforme a spec — header é metadado HTTP, não payload. State holder `ProviderUsage` (Scoped) carrega o nome via DI; middleware lê e adiciona o header via `Response.OnStarting`. |
 | Por que empacotar a modificação ao vivo como skill em vez de prompt ad-hoc? | Prompt-as-code versionado: a skill vive em `.claude/skills/`, ensaiada antes da call, com guardrails (branch isolado, validação build+test, escopo restrito). PRs do ensaio (#1/#2/#3) são evidência auditável do que cada skill produz. ADR-019. |
@@ -407,11 +407,41 @@ Argumentos guardados na manga, caso a banca questione:
 
 ---
 
+## 🎯 11.b Perguntas-armadilha esperadas e respostas preparadas
+
+Bloco antecipando perguntas duras que um avaliador sênior pode fazer fora do roteiro previsto. Cada resposta cabe em ~30s e é honesta sobre o trade-off, não defensiva.
+
+### "Seu CB é por provider — e se o problema for compartilhado (DNS, certificado, firewall)?"
+> CB isolado é decisão consciente: A degradado não bloqueia B. Para detectar problema compartilhado (A E B falhando juntos), as métricas `dok.providers.failures{provider}` permitem ver os dois subindo simultaneamente — sintoma de problema na rede, não num provider específico. Em produção, esse sinal viraria alerta correlacional (`rate(failures{provider="A"}) > 0 AND rate(failures{provider="B"}) > 0`). Hoje no projeto, está observável via `dotnet-counters monitor -n Dok.Api Dok.Providers`, mas não automatizado — alerta fica como próximo passo.
+
+### "Você implementou fallback sequencial — e se pedissem paralelo com cross-check?"
+> Documentado em **ADR-020**. Sequential first-success: latência mínima (`min(latency_A, latency_B)` no caminho feliz), 1 chamada por consulta saudável, sem detecção ativa de divergência. Paralelo+cross-check pagaria custo dobrado de chamadas externas (providers reais cobram/têm rate limit) sem política clara de "quem ganha em divergência" — política depende do contrato real (SLA, autoridade legal). Mitigação atual: header `X-Dok-Provider` + métricas permitem auditoria post-hoc.
+
+### "Catch específico em vez de `catch (Exception)` — qual o impacto?"
+> `DebtProviderChain.IsProviderFailure` distingue **falha esperada de provider** (HTTP, timeout, JSON/XML parse, CB aberto) que dispara fallback, de **bug não-tratado** que propaga para 500. Em prod, o log inclui `ex.GetType().Name` — então no Loki/Splunk eu filtro `exception_type=TimeoutRejectedException` para ver se A está timing out, ou `exception_type=JsonException` para ver provider mandando lixo. Métrica `dok.providers.failures{exception_type}` dá a mesma visibilidade quantitativa.
+
+### "Money agregado — `sum(rounded) == round(sum)`? Onde mora o penny drop?"
+> Adoto **sum-of-rounded** intencionalmente: cada `UpdatedDebt` é unidade contábil arredondada conforme HALF_UP da spec, e somas posteriores partem desses valores. Em auditoria contábil rigorosa eu faria round-of-sum como total canônico — mas isso introduz penny drop entre subtotais e total exibidos ao usuário (1 centavo de divergência), pior em UX. Trade-off documentado e testado em `MoneyAggregationTests.cs` — caso de borda exato (0,005 + 0,005) está coberto e mostra os dois resultados lado a lado.
+
+### "Janela do CB — 2 falhas em 30s deslizante? Como você testou?"
+> Polly v8 com `MinimumThroughput=2` + `SamplingDuration=30s` + `FailureRatio=1.0` significa: CB abre quando **todas** as últimas 2 chamadas em janela deslizante de 30s falharam. Não testei timing-based no pipeline porque é frágil em CI (depende de wall clock e load). Confio em (a) documentação do Polly que define o comportamento, (b) os testes de integração que validam o **fallback**, independente do estado interno do CB. Para validar timing seria com `FakeTimeProvider` num teste isolado — não está no pipeline atual, está reconhecido.
+
+### "Performance — 1000 RPS na mesma placa, onde é o gargalo?"
+> Sem benchmark formal. Latência hoje é dominada pelos providers HTTP (sub-100ms locally, depende do SLA real). Para 1000 RPS, gargalo provável: (a) connection pool do `HttpClient` (default 10/host — aumentaria via `MaxConnectionsPerServer`), (b) parse de XML do Provider B (`XDocument.LoadAsync` aloca; `XmlReader` streaming seria a otimização), (c) alocação de `Money` (já é `readonly record struct` — não vira heap). As métricas via `IMeterFactory` dão visibilidade primária; BenchmarkDotNet seria 3-4h pra fechar — não trouxe agora porque ganho marginal vs prioridades atuais.
+
+### "TestServer vs Kestrel — o que sua suite não cobre?"
+> `WebApplicationFactory` usa `TestServer`, não Kestrel real — não enforça `MaxRequestBodySize` igual, não exercita HTTP/2, não usa socket real. Cobri com (a) teste tolerante de body 413 que aceita 400 OR 413, (b) `make smoke` real via Docker em desenvolvimento. Em CI de produção eu adicionaria um job que faz `docker compose up && curl` com payloads sintéticos. Está reconhecido como melhoria futura no README.
+
+### "E se a IA gerar taxa errada na skill `/change-interest-rate`? Como o build pega?"
+> Pegada honesta: a skill mexe na constante **e** nos testes que dependem dela — então build verde não captura erro numérico da IA. Defesa final é o **review humano do PR** que a skill abre (por isso ela termina em `gh pr create`, não em merge). Em produção eu adicionaria uma camada de golden tests blindada das skills, com valores literais da spec, fora do raio de edição da IA. Documentado em **ADR-019 → seção "Limitação reconhecida"**.
+
+---
+
 ## 📚 12. Material de apoio (caso a banca queira mergulhar)
 
 | Quero ver | Onde |
 |---|---|
-| Decisões arquiteturais detalhadas | `docs/architecture/` (19 ADRs) |
+| Decisões arquiteturais detalhadas | `docs/architecture/` (20 ADRs) |
 | Plano de implementação | `docs/PLANO-IMPLEMENTACAO.md` |
 | Spec original | `docs/HomeTest-2.pdf` |
 | Como rodar | `README.md` (3 caminhos: dev local, Docker, testes) |
@@ -422,7 +452,7 @@ Argumentos guardados na manga, caso a banca questione:
 
 ## ✅ Checklist final (5 min antes da banca)
 
-- [ ] `dotnet test` → 57/57 verde
+- [ ] `dotnet test` → 64/64 verde
 - [ ] `docker compose up -d` → 3 containers up
 - [ ] `curl http://localhost:8080/api/v1/debitos` → 200 com payload da spec
 - [ ] Browser aberto em `http://localhost:8080/scalar`
