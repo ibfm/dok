@@ -313,9 +313,9 @@ Skills ficam disponíveis caso a banca peça explicitamente *"roda a skill na mi
 
 | Skill | O que faz | Arquivos tocados | PR do ensaio |
 |---|---|---|---|
-| `/add-provider` | Adiciona um `IDebtProvider` à chain (JSON ou XML) | 6 arquivos: novo adapter, `ProvidersOptions`, DI, `appsettings.json`, `docker-compose.yml`, `Dok.FakeProviders/data/` | [#1 — ProviderC (JSON)](https://github.com/ibfm/dok/pull/1) |
-| `/add-debt-type` | Adiciona um `DebtType` com `IInterestRule` | 6 arquivos: enum, mapper, nova rule, DI, testes da rule, `DebtTypeMapperTests` | [#2 — LICENCIAMENTO (0,33%/dia, cap 20%)](https://github.com/ibfm/dok/pull/2) |
-| `/change-interest-rate` | Muda taxa/cap de uma rule existente | 2 arquivos: a rule + os testes que dependem da constante | [#3 — IPVA DailyRate 0,33% → 0,50%](https://github.com/ibfm/dok/pull/3) |
+| `/add-provider` | Adiciona um `IDebtProvider` à chain (JSON ou XML) | 7 arquivos: novo adapter, `ProvidersOptions`, DI, `appsettings.json`, `docker-compose.yml`, `Dok.FakeProviders/data/`, `WireMockApiFactory` | [#4 — ProviderC (XML)](https://github.com/ibfm/dok/pull/4) |
+| `/add-debt-type` | Adiciona um `DebtType` com `IInterestRule` | 6 arquivos: enum, mapper, nova rule, DI, testes da rule, `DebtTypeMapperTests` | [#5 — LICENCIAMENTO (1,0%/dia, cap 20%)](https://github.com/ibfm/dok/pull/5) |
+| `/change-interest-rate` | Muda taxa/cap de uma rule existente | 2 arquivos: a rule + os testes que dependem da constante | [#6 — IPVA DailyInterestRate 0,33% → 0,50%](https://github.com/ibfm/dok/pull/6) |
 
 > *"Esses três PRs são o output literal das skills no ensaio — vocês podem revisar o diff e ver que cada commit é mínimo, validado por build+test antes do push, e descreve no body o que mudou e por que."*
 
@@ -333,7 +333,7 @@ Skills ficam disponíveis caso a banca peça explicitamente *"roda a skill na mi
 5. Adicionar `ProviderCUrl` em `appsettings.json`.
 6. *"E pra demo ao vivo, adiciono o service no `docker-compose.yml` e um data file fake. Mas o ponto: o `DebtProviderChain` já itera sobre `IEnumerable<IDebtProvider>`, então só registrar no DI já entra na chain."*
 
-→ Diff completo do que isso produz: PR #1.
+→ Diff completo do que isso produz: PR #4 (variante XML do ensaio — a skill aceita JSON ou XML via parâmetro).
 
 #### Cenário B: "Adicione tipo de débito LICENCIAMENTO"
 1. *"Aqui o ponto de extensão é a Strategy `IInterestRule`. Cada tipo tem sua regra — IPVA tem cap, multa não."*
@@ -348,15 +348,15 @@ Skills ficam disponíveis caso a banca peça explicitamente *"roda a skill na mi
 7. Adicionar testes em `tests/Dok.Domain.Tests/LicenciamentoInterestRuleTests.cs`.
 8. ⚠️ Atenção: `DebtTypeMapperTests.cs` tem `LICENCIAMENTO` listado como exemplo de "unknown type" — se ainda estiver lá, mover pra theory de "known".
 
-→ Diff completo do que isso produz: PR #2.
+→ Diff completo do que isso produz: PR #5.
 
 #### Cenário C: "Mude a taxa de juros do IPVA pra 0,50%"
-1. *"Aqui é uma constante na rule — `DailyRate` em `IpvaInterestRule`."*
-2. Trocar `private const decimal DailyRate = 0.0033m;` por `0.0050m`.
+1. *"Aqui é uma constante na rule — `DailyInterestRate` em `IpvaInterestRule`."*
+2. Trocar `private const decimal DailyInterestRate = 0.0033m;` por `0.0050m`.
 3. Recalcular qualquer teste em `IpvaInterestRuleTests.cs` que valide um valor não-cap (testes que batem no cap continuam iguais — `min(0.005×1500×121, 300) == 300`).
 4. *"Bônus: pra tornar configurável, eu moveria essas constantes pra `IOptions<InterestRulesOptions>` no domain — a rule receberia injetada em vez de hardcoded."*
 
-→ Diff completo do que isso produz: PR #3.
+→ Diff completo do que isso produz: PR #6.
 
 > *"A arquitetura foi pensada pra esse tipo de modificação: cada extensão é um arquivo novo, sem tocar em código existente. Strategy + Adapter. As skills só conseguem ser determinísticas porque os pontos de extensão já estavam preparados pelos ADRs anteriores — elas demonstram o ROI desses ADRs."*
 
@@ -401,7 +401,7 @@ Argumentos guardados na manga, caso a banca questione:
 | Como você lida com divergência entre A e B? | A spec pede a **descrição da estratégia**, não a implementação. Adotei sequential first-success: alternativas (paralelo+cross-check, verify-on-suspect-zero, authoritative-per-type) e trade-offs documentados em **ADR-020**. Mitigação operacional: header `X-Dok-Provider` + métricas por provider permitem detecção post-hoc. |
 | Por que `extension(...) { }` em vez de `this T param`? | Sintaxe de **extension members do C# 14** (.NET 10). Agrupa membros sobre o mesmo tipo num bloco e habilita **propriedades + operadores** de extensão (que `this T` nunca permitiu). Para os startup helpers atuais o ganho é estético; mas mostra que estou na sintaxe atual da linguagem e abre porta para extensões mais ricas no domínio. |
 | Como o cliente sabe qual provider respondeu? | Header `X-Dok-Provider` na response (visível no Scalar UI). Body permanece literal conforme a spec — header é metadado HTTP, não payload. State holder `ProviderUsage` (Scoped) carrega o nome via DI; middleware lê e adiciona o header via `Response.OnStarting`. |
-| Por que empacotar a modificação ao vivo como skill em vez de prompt ad-hoc? | Prompt-as-code versionado: a skill vive em `.claude/skills/`, ensaiada antes da call, com guardrails (branch isolado, validação build+test, escopo restrito). PRs do ensaio (#1/#2/#3) são evidência auditável do que cada skill produz. ADR-019. |
+| Por que empacotar a modificação ao vivo como skill em vez de prompt ad-hoc? | Prompt-as-code versionado: a skill vive em `.claude/skills/`, ensaiada antes da call, com guardrails (branch isolado, validação build+test, escopo restrito). PRs do ensaio (#4/#5/#6) são evidência auditável do que cada skill produz. ADR-019. |
 | Por que não rodar a skill ao vivo na banca? | Trade-off de tempo: o fluxo `gh pr create` leva 30-60s sem narrativa enquanto roda. Mais valor pra banca: mostrar o **diff já produzido** num PR aberto + fazer a mudança à mão na call narrando os pontos de extensão. Skill fica disponível se pedirem explicitamente. |
 | As skills "trapaceiam" mostrando IA fazendo o que já estava roteirizado? | Não — elas demonstram engenharia em torno do uso de IA (versionamento, guardrails, ensaio, PR como artefato auditável). Para mudança fora do escopo das 3 skills, o ad-hoc continua disponível e a banca pode pedir qualquer coisa. |
 
@@ -457,6 +457,6 @@ Bloco antecipando perguntas duras que um avaliador sênior pode fazer fora do ro
 - [ ] `curl http://localhost:8080/api/v1/debitos` → 200 com payload da spec
 - [ ] Browser aberto em `http://localhost:8080/scalar`
 - [ ] 3 terminais arrumados (curl / logs / editor)
-- [ ] Skills do item 9 com PRs de ensaio abertos (#1/#2/#3) — links prontos pra colar na call
+- [ ] Skills do item 9 com PRs de ensaio abertos (#4/#5/#6) — links prontos pra colar na call
 - [ ] Working tree limpo em `main` (caso a banca insista em rodar uma skill ao vivo)
 - [ ] Cabeça respirando — você sabe defender cada decisão. Boa! 🚀
