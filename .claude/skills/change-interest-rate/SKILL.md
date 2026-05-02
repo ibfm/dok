@@ -26,7 +26,10 @@ Pergunte os 3 parâmetros via `AskUserQuestion` numa única chamada:
 Derive:
 - `rule_class` = `IpvaInterestRule` ou `MultaInterestRule`
 - `tests_class` = `IpvaInterestRuleTests` ou `MultaInterestRuleTests`
-- `field_const` = `DailyRate` ou `Cap`
+- `field_const` — nome **exato** da constante na rule:
+  - `field == daily_rate` → `DailyInterestRate`
+  - `field == cap` (válido apenas em `IpvaInterestRule`) → `InterestCapRatio`
+  > As rules na main usam esses nomes pra rastrear origem na spec; o nome antigo (`DailyRate`/`Cap`) foi descontinuado.
 - `new_value_decimal` = `new_value_pct / 100` formatado com `m`. Ex: `0.5` → `0.0050m`; `25` → `0.25m`
 - Branch name = `feat/change-interest-rate-<rule>-<field>` (ex: `feat/change-interest-rate-ipva-daily_rate`)
 
@@ -63,9 +66,9 @@ Se a fórmula for ambígua ou o teste validar caso de borda (`days <= 0` retorna
 
 Use a fórmula correta:
 
-- **Para `daily_rate` em `IpvaInterestRule`**: `interest = min(base × new_rate × days, base × cap)`. Se a quantidade de dias do teste fizer atingir o cap (`base × new_rate × days > base × cap`), o teste passa como antes — não muda o valor esperado.
-- **Para `cap` em `IpvaInterestRule`**: `interest = min(base × daily_rate × days, base × new_cap)`. Atualize valores onde o cap virava o limite.
-- **Para `daily_rate` em `MultaInterestRule`**: `interest = base × new_rate × days`. Sem cap.
+- **Para `DailyInterestRate` em `IpvaInterestRule`**: `interest = min(base × new_rate × days, base × InterestCapRatio)`. Se a quantidade de dias do teste fizer atingir o cap (`base × new_rate × days > base × InterestCapRatio`), o teste passa como antes — não muda o valor esperado.
+- **Para `InterestCapRatio` em `IpvaInterestRule`**: `interest = min(base × DailyInterestRate × days, base × new_cap)`. Atualize valores onde o cap virava o limite.
+- **Para `DailyInterestRate` em `MultaInterestRule`**: `interest = base × new_rate × days`. Sem cap.
 
 Aplique HALF_UP (arredondamento `MidpointRounding.AwayFromZero` em 2 casas decimais) ao valor final via `Money.Of(...)` — replica o que a rule faz em produção. Resultado em `result.UpdatedAmount.Value.ShouldBe(<valor>m)`.
 

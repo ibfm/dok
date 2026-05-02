@@ -73,6 +73,8 @@ DebtType.<type_pascal> => "<type_upper>",
 
 ### 3. `src/Dok.Domain/Rules/<type_pascal>InterestRule.cs` (NOVO)
 
+> **Convenção de nomes:** `IpvaInterestRule` e `MultaInterestRule` na main usam `DailyInterestRate` e `InterestCapRatio` (com XML doc citando a spec). Mantenha **os mesmos nomes e o mesmo padrão de XML doc** na nova rule pra preservar consistência — o nome `DailyRate`/`Cap` antigo foi descontinuado.
+
 **Sem cap** (cap_decimal vazio/zero) — modele como `MultaInterestRule`:
 
 ```csharp
@@ -80,7 +82,8 @@ namespace Dok.Domain.Rules;
 
 public sealed class <type_pascal>InterestRule : IInterestRule
 {
-    private const decimal DailyRate = <daily_rate_decimal>;
+    /// <summary><daily_rate_pct>% ao dia, sem teto, conforme parâmetros de <type_upper>.</summary>
+    private const decimal DailyInterestRate = <daily_rate_decimal>;
 
     public DebtType Type => DebtType.<type_pascal>;
 
@@ -90,7 +93,7 @@ public sealed class <type_pascal>InterestRule : IInterestRule
         if (days <= 0)
             return new UpdatedDebt(debt.Type, debt.OriginalAmount, debt.OriginalAmount, debt.DueDate, 0);
 
-        var interest = debt.OriginalAmount.Value * DailyRate * days;
+        var interest = debt.OriginalAmount.Value * DailyInterestRate * days;
         var updated = Money.Of(debt.OriginalAmount.Value + interest);
         return new UpdatedDebt(debt.Type, debt.OriginalAmount, updated, debt.DueDate, days);
     }
@@ -104,8 +107,11 @@ namespace Dok.Domain.Rules;
 
 public sealed class <type_pascal>InterestRule : IInterestRule
 {
-    private const decimal DailyRate = <daily_rate_decimal>;
-    private const decimal Cap = <cap_decimal>;
+    /// <summary><daily_rate_pct>% ao dia conforme parâmetros de <type_upper>.</summary>
+    private const decimal DailyInterestRate = <daily_rate_decimal>;
+
+    /// <summary><cap_pct>% do valor original aplicado ao <em>valor de juros</em>, não ao total.</summary>
+    private const decimal InterestCapRatio = <cap_decimal>;
 
     public DebtType Type => DebtType.<type_pascal>;
 
@@ -115,8 +121,8 @@ public sealed class <type_pascal>InterestRule : IInterestRule
         if (days <= 0)
             return new UpdatedDebt(debt.Type, debt.OriginalAmount, debt.OriginalAmount, debt.DueDate, 0);
 
-        var raw = debt.OriginalAmount.Value * DailyRate * days;
-        var capValue = debt.OriginalAmount.Value * Cap;
+        var raw = debt.OriginalAmount.Value * DailyInterestRate * days;
+        var capValue = debt.OriginalAmount.Value * InterestCapRatio;
         var interest = Math.Min(raw, capValue);
         var updated = Money.Of(debt.OriginalAmount.Value + interest);
         return new UpdatedDebt(debt.Type, debt.OriginalAmount, updated, debt.DueDate, days);

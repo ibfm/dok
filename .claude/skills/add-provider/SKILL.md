@@ -46,8 +46,8 @@ Se qualquer passo falhar, **aborte e reporte o erro literal**. Não tente "conse
 
 ### 1. `src/Dok.Infrastructure/Providers/Provider<letter_upper><Format>Adapter.cs` (NOVO)
 
-- Se `format == JSON`: copie a estrutura de `ProviderAJsonAdapter.cs`. Substitua `ProviderA` → `Provider<letter_upper>`, `ProviderAJsonAdapter` → `Provider<letter_upper>JsonAdapter`, `Name => "ProviderA"` → `Name => "Provider<letter_upper>"`. Mantenha tudo o mais idêntico.
-- Se `format == XML`: copie a estrutura de `ProviderBXmlAdapter.cs` com substituições análogas (`ProviderB` → `Provider<letter_upper>`).
+- Se `format == JSON`: copie a estrutura de `ProviderAJsonAdapter.cs`. Substitua `ProviderA` → `Provider<letter_upper>`, `ProviderAJsonAdapter` → `Provider<letter_upper>JsonAdapter`, `Name => "ProviderA"` → `Name => "Provider<letter_upper>"`. **Mantenha o helper `EnsureJsonContentType` e a chamada a ele** — é a defesa contra provider retornando 200 com payload de outro tipo (HTML de erro com Content-Type errado, etc.); cobre o caso "200 com lixo" disparando fallback.
+- Se `format == XML`: copie a estrutura de `ProviderBXmlAdapter.cs` com substituições análogas (`ProviderB` → `Provider<letter_upper>`). **Mantenha o helper `EnsureXmlContentType`** pelo mesmo motivo.
 
 ### 2. `src/Dok.Infrastructure/Options/ProvidersOptions.cs` (EDIT)
 
@@ -114,6 +114,25 @@ E na seção `api:`, adicione:
 
 Copie o conteúdo de `providerA.json` (se JSON) ou `providerB.xml` (se XML). Mantenha a placa `ABC1234` e os mesmos débitos — assim o fake responde igual aos outros.
 
+### 7. `tests/Dok.Integration.Tests/WireMockApiFactory.cs` (EDIT — **obrigatório**)
+
+`ProvidersOptions.Provider<letter_upper>Url` é `[Required, Url]` + `ValidateOnStart`, então o `WebApplicationFactory<Program>` **falha ao bootar** se o config in-memory não tiver a URL. Sem esse passo, todos os integration tests quebram.
+
+Edite assim:
+
+1. Adicione propriedade `WireMockServer Provider<letter_upper> { get; }` ao lado dos `ProviderA`/`ProviderB` existentes; inicialize no construtor com `WireMockServer.Start()`.
+2. No `ConfigureWebHost → ConfigureAppConfiguration`, adicione:
+   ```csharp
+   ["Providers:Provider<letter_upper>Url"] = Provider<letter_upper>.Url,
+   ```
+3. No `Dispose(bool disposing)`, dentro do bloco `if (disposing)`, adicione:
+   ```csharp
+   Provider<letter_upper>.Stop();
+   Provider<letter_upper>.Dispose();
+   ```
+4. No `ResetMocks()`, adicione `Provider<letter_upper>.Reset();`.
+5. **Não** crie helpers `StubProvider<letter_upper>` — testes existentes não cobrem o novo provider, então ele fica sem stub e responde 404 a qualquer request, o que cai no `IsProviderFailure(HttpRequestException)` e dispara fallback. Isso é OK: testes existentes passam porque ProviderA/B respondem antes de a chain chegar nele.
+
 ## Validação obrigatória (antes de commitar)
 
 ```bash
@@ -126,7 +145,7 @@ Se falhar: **NÃO commite**. Reporte o erro pro usuário e pare. Diga: *"Build f
 dotnet test
 ```
 
-> Rode a suite completa. Integration tests **devem continuar verdes** mesmo sem o novo provider configurado nos `WireMockServer` dos testes — porque o `DebtProviderChain` ignora providers que não respondem se algum anterior já respondeu (e os existentes A/B continuam intactos). Se algum integration test depender de "todos os providers configurados", isso é sinal de teste frágil — reporte ao usuário.
+> Rode a suite completa. Integration tests **devem continuar verdes** porque (a) o passo 7 configurou o `WireMockServer` do novo provider em `WireMockApiFactory`, garantindo que `ValidateOnStart` da `ProvidersOptions` aceite o boot; e (b) o `DebtProviderChain` ignora providers que não respondem se algum anterior já respondeu (ProviderA/B continuam servindo as respostas reais). Se a suite quebrar com mensagem `OptionsValidationException` ou `[Required, Url]`, é sintoma de o passo 7 ter sido pulado — volte e corrija o `WireMockApiFactory`.
 
 Se testes falharem: **NÃO commite**. Reporte e pare.
 
@@ -141,10 +160,11 @@ git add \
   src/Dok.Infrastructure/DependencyInjection.cs \
   src/Dok.Api/appsettings.json \
   docker-compose.yml \
-  src/Dok.FakeProviders/data/provider<letter_upper>.<json|xml>
+  src/Dok.FakeProviders/data/provider<letter_upper>.<json|xml> \
+  tests/Dok.Integration.Tests/WireMockApiFactory.cs
 ```
 
-(Liste os 6 arquivos exatos. Não use `git add -A`.)
+(Liste os 7 arquivos exatos. Não use `git add -A`.)
 
 ```bash
 git commit -m "$(cat <<'EOF'
