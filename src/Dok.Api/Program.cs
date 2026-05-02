@@ -16,7 +16,8 @@ builder.Services
     .AddDokInfrastructure(builder.Configuration)
     .AddDokJson()
     .AddDokErrorHandling()
-    .AddDokOpenApi();
+    .AddDokOpenApi()
+    .AddDokObservability();
 
 builder.Services.AddHealthChecks();
 
@@ -31,6 +32,7 @@ app.UseProviderHeader();
 app.MapDokOpenApi();
 app.MapHealthChecks("/health/live");
 app.MapHealthChecks("/health/ready");
+app.MapDokMetrics();
 app.MapControllers();
 
 await app.RunAsync();

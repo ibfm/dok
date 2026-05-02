@@ -183,6 +183,50 @@ public class DebtsApiTests : IClassFixture<WireMockApiFactory>
     }
 
     [Fact]
+    public async Task POST_when_provider_A_returns_malformed_json_falls_back_to_B()
+    {
+        _factory.ResetMocks();
+        _factory.StubProviderA(SampleData.ProviderAJsonMalformed);
+        _factory.StubProviderB(SampleData.ProviderBXmlHappy);
+
+        var response = await _client.PostAsync("/api/v1/debitos",
+            JsonBody("""{ "placa": "ABC1234" }"""));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Headers.GetValues("X-Dok-Provider").ShouldContain("ProviderB");
+    }
+
+    [Fact]
+    public async Task POST_when_provider_A_returns_html_with_wrong_content_type_falls_back_to_B()
+    {
+        _factory.ResetMocks();
+        // Conteúdo é JSON válido, mas Content-Type anuncia HTML — gateway de erro mascarado.
+        _factory.StubProviderA(SampleData.ProviderAJsonHappy, contentType: "text/html");
+        _factory.StubProviderB(SampleData.ProviderBXmlHappy);
+
+        var response = await _client.PostAsync("/api/v1/debitos",
+            JsonBody("""{ "placa": "ABC1234" }"""));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        response.Headers.GetValues("X-Dok-Provider").ShouldContain("ProviderB");
+    }
+
+    [Fact]
+    public async Task POST_when_both_providers_return_malformed_payload_returns_503()
+    {
+        _factory.ResetMocks();
+        _factory.StubProviderA(SampleData.ProviderAJsonMalformed);
+        _factory.StubProviderB(SampleData.ProviderBXmlMalformed);
+
+        var response = await _client.PostAsync("/api/v1/debitos",
+            JsonBody("""{ "placa": "ABC1234" }"""));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.ServiceUnavailable);
+        var body = await response.Content.ReadAsStringAsync();
+        body.ShouldContain("\"error\":\"all_providers_unavailable\"");
+    }
+
+    [Fact]
     public async Task POST_with_body_above_1MiB_returns_413()
     {
         _factory.ResetMocks();

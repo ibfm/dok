@@ -4,6 +4,7 @@ global using Dok.Domain;
 global using Dok.Domain.Abstractions;
 global using Dok.Domain.Exceptions;
 global using Dok.Domain.Rules;
+global using Microsoft.Extensions.Logging.Abstractions;
 global using Microsoft.Extensions.Time.Testing;
 global using NSubstitute;
 global using Shouldly;

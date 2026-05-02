@@ -16,6 +16,8 @@ public sealed class ProviderBXmlAdapter(
         logger.LogDebug("Calling ProviderB for {@Plate}", plate);
         using var response = await http.GetAsync($"/debts/{plate.Value}", ct);
         response.EnsureSuccessStatusCode();
+        EnsureXmlContentType(response);
+
         await using var stream = await response.Content.ReadAsStreamAsync(ct);
         var doc = await XDocument.LoadAsync(stream, LoadOptions.None, ct);
 
@@ -37,5 +39,25 @@ public sealed class ProviderBXmlAdapter(
             result.Add(new Debt(type, amount, due));
         }
         return result;
+    }
+
+    /// <summary>
+    /// Provider precisa anunciar XML via Content-Type. Aceita <c>application/xml</c>,
+    /// <c>text/xml</c> e variantes <c>application/*+xml</c>. Outros valores indicam degradação
+    /// — lançamos <see cref="HttpRequestException"/> para que o <see cref="DebtProviderChain"/>
+    /// dispare fallback.
+    /// </summary>
+    private static void EnsureXmlContentType(HttpResponseMessage response)
+    {
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+        if (mediaType is null
+            || (!mediaType.Equals("application/xml", StringComparison.OrdinalIgnoreCase)
+                && !mediaType.Equals("text/xml", StringComparison.OrdinalIgnoreCase)
+                && !(mediaType.StartsWith("application/", StringComparison.OrdinalIgnoreCase)
+                     && mediaType.EndsWith("+xml", StringComparison.OrdinalIgnoreCase))))
+        {
+            throw new HttpRequestException(
+                $"ProviderB returned unexpected Content-Type '{mediaType ?? "<none>"}', expected application/xml");
+        }
     }
 }

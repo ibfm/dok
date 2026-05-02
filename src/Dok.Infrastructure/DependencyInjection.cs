@@ -1,4 +1,5 @@
 using Dok.Infrastructure.Abstractions;
+using Dok.Infrastructure.Observability;
 using Dok.Infrastructure.Options;
 using Dok.Infrastructure.Providers;
 using Microsoft.Extensions.Configuration;
@@ -46,6 +47,7 @@ public static class DependencyInjection
         services.AddTransient<IDebtProvider>(sp => sp.GetRequiredService<ProviderBXmlAdapter>());
 
         services.AddScoped<ProviderUsage>();
+        services.AddSingleton<ProviderMetrics>();
         services.AddScoped<IDebtProviderChain, DebtProviderChain>();
 
         return services;

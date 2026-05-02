@@ -21,7 +21,7 @@ public class DebtsCalculatorTests
                 new(DebtType.Multa, Money.Of(300.50m), new DateOnly(2024, 2, 15)),
             });
 
-        var calculator = new DebtsCalculator(providers, _rules, _clock);
+        var calculator = new DebtsCalculator(providers, _rules, _clock, NullLogger<DebtsCalculator>.Instance);
 
         var result = await calculator.CalculateAsync(Plate.Parse("ABC1234"), default);
 
@@ -48,7 +48,7 @@ public class DebtsCalculatorTests
             .FetchDebtsAsync(Arg.Any<Plate>(), Arg.Any<CancellationToken>())
             .Returns(Array.Empty<Debt>());
 
-        var calculator = new DebtsCalculator(providers, _rules, _clock);
+        var calculator = new DebtsCalculator(providers, _rules, _clock, NullLogger<DebtsCalculator>.Instance);
 
         var result = await calculator.CalculateAsync(Plate.Parse("ABC1234"), default);
         result.Debts.ShouldBeEmpty();

@@ -58,4 +58,14 @@ public static class SampleData
           ]
         }
         """;
+
+    /// <summary>JSON malformado (estrutura inválida): debts deveria ser array, vem string.</summary>
+    public const string ProviderAJsonMalformed = """
+        { "vehicle": "ABC1234", "debts": "NOT_AN_ARRAY" }
+        """;
+
+    /// <summary>XML malformado: tag não fechada.</summary>
+    public const string ProviderBXmlMalformed = """
+        <response><plate>ABC1234</plate><debts><debt><category>IPVA
+        """;
 }
