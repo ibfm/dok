@@ -4,4 +4,5 @@ public enum DebtType
 {
     Ipva,
     Multa,
+    Licenciamento,
 }
