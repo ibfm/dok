@@ -55,3 +55,6 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Personal Claude Code workspace instructions (per-developer)
+CLAUDE.md
