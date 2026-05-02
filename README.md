@@ -72,6 +72,23 @@ curl -X POST http://localhost:8080/api/v1/debitos \
 
 Os logs do container `api` mostram a sequência: `Querying ProviderA`, `ProviderA failed`, `Querying ProviderB`, `ProviderB returned 2 debts`.
 
+### Placas com comportamento especial nos fakes
+
+Os fake providers (`Dok.FakeProviders`) reconhecem uma placa de demo que retorna payload com tipo de débito desconhecido — útil pra mostrar o caminho do **HTTP 422** ao vivo sem precisar parar containers ou trocar arquivos:
+
+| Placa | Comportamento | Resultado esperado |
+|---|---|---|
+| `ABC1234` (e qualquer outra placa válida) | Payload normal: IPVA + MULTA | `200` com `total_atualizado: "2355.93"` |
+| `UNK0000` | Payload com tipo `DPVAT` (não mapeado em `DebtTypeMapper`) | `422` com `{"error":"unknown_debt_type","type":"DPVAT"}` |
+
+```bash
+curl -X POST http://localhost:8080/api/v1/debitos \
+     -H 'Content-Type: application/json' -d '{"placa":"UNK0000"}'
+# 422 — UnknownDebtTypeException no adapter propaga sem fallback (decisão de domínio, não falha de provider).
+```
+
+A placa de demo é configurável via env var `Provider__UnknownTypePlate` no fake.
+
 ## Configuração
 
 Tudo configurável vive em `src/Dok.Api/appsettings.json` (com overrides em `appsettings.Development.json` e `appsettings.Production.json`). **Mudar config não exige rebuild** — basta reiniciar o processo.

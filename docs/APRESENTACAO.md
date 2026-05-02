@@ -237,13 +237,23 @@ docker compose start provider-a provider-b
 
 ### 422 — tipo de débito desconhecido
 
-Esse é mais difícil de demonstrar ao vivo (precisaria de um WireMock customizado). Argumente que **está coberto pelos testes de integração** — abra o arquivo:
+O fake provider tem uma **placa de demo** `UNK0000` que retorna um payload com tipo `DPVAT` (não mapeado em `DebtTypeMapper`). Use direto via curl:
 
 ```bash
-sed -n '69,82p' tests/Dok.Integration.Tests/DebtsApiTests.cs
+curl -X POST http://localhost:8080/api/v1/debitos \
+     -H 'Content-Type: application/json' \
+     -d '{"placa":"UNK0000"}'
+```
+Esperado:
+```json
+{"error":"unknown_debt_type","type":"DPVAT"}
 ```
 
-> *"O cenário está testado: provider retorna `LICENCIAMENTO`, API responde 422 com payload `{\"error\":\"unknown_debt_type\",\"type\":\"LICENCIAMENTO\"}` — exatamente o formato da spec."*
+> *"O fake reconhece `UNK0000` como placa de demo e responde com tipo `DPVAT` — esse tipo **não** está em `DebtTypeMapper`, então o adapter joga `UnknownDebtTypeException` no parse. Olhem em `DebtProviderChain.cs`: o `catch (UnknownDebtTypeException) { throw; }` é literal — diferente das falhas operacionais (timeout, HTTP), o erro de domínio **não** dispara fallback. Cair pro Provider B silenciaria o erro e cobraria o cliente menos do que ele deve. Spec é explícita: 'Não silenciar, não converter para OUTROS' — interpretei estrito (ADR-014). Funciona com Provider A normal; se quiser ver via Provider B, é só `docker compose stop provider-a` antes."*
+
+A escolha de `DPVAT` (em vez de `LICENCIAMENTO`) é deliberada: `LICENCIAMENTO` foi adicionado como tipo conhecido no PR #5 (skill `/add-debt-type`); `DPVAT` permanece desconhecido garantidamente, então a demo não quebra se o PR for mergeado.
+
+Coberto também pelos testes de integração (`POST_returns_422_when_provider_returns_unknown_debt_type` em `DebtsApiTests.cs`).
 
 ---
 
@@ -255,12 +265,12 @@ dotnet test --logger "console;verbosity=normal" 2>&1 | grep -E "Passed!"
 
 Esperado:
 ```
-Passed! Domain.Tests        39/39
+Passed! Domain.Tests        43/43
 Passed! Application.Tests    7/7
-Passed! Integration.Tests   11/11
+Passed! Integration.Tests   14/14
 ```
 
-> *"57 testes ao todo. Domain testes são unitários puros (Plate, Money HALF_UP, regras de juros com casos exatos da spec — IPVA 121 dias = 1800, MULTA 85 dias = 555.93). Application testa orquestração com NSubstitute. Integration tests sobem a API real com `WebApplicationFactory` e dois `WireMockServer` em portas dinâmicas — exercitam HTTP, Polly, JsonConverters, IExceptionHandlers de verdade. Cobrem happy path, fallback A→B, 503, 422, 400 (placa inválida + JSON malformado + campo desconhecido), `<debts/>` autofechado, débito futuro com juros zerado, e múltiplos débitos do mesmo tipo agrupados em SOMENTE_<TIPO> singular."*
+> *"64 testes ao todo. Domain testes são unitários puros (Plate, Money HALF_UP + sum-of-rounded vs round-of-sum, regras de juros com casos exatos da spec — IPVA 121 dias = 1800, MULTA 85 dias = 555.93). Application testa orquestração com NSubstitute. Integration tests sobem a API real com `WebApplicationFactory` e dois `WireMockServer` em portas dinâmicas — exercitam HTTP, Polly, JsonConverters, IExceptionHandlers de verdade. Cobrem happy path, fallback A→B, 503, 422, 400 (placa inválida + JSON malformado + campo desconhecido + Content-Type errado), `<debts/>` autofechado, débito futuro com juros zerado, payload malformado de provider, e múltiplos débitos do mesmo tipo agrupados em SOMENTE_<TIPO> singular."*
 
 > *"Escolhi Shouldly em vez de FluentAssertions porque FA virou comercial em 2024. NSubstitute em vez de Moq pela polêmica do SponsorLink. Tudo defendido nos ADRs 013."*
 
