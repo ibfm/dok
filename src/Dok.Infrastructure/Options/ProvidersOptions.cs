@@ -11,4 +11,7 @@ public sealed class ProvidersOptions
 
     [Required, Url]
     public string ProviderBUrl { get; init; } = string.Empty;
+
+    [Required, Url]
+    public string ProviderCUrl { get; init; } = string.Empty;
 }

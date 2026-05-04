@@ -4,11 +4,13 @@ public sealed class WireMockApiFactory : WebApplicationFactory<Program>
 {
     public WireMockServer ProviderA { get; }
     public WireMockServer ProviderB { get; }
+    public WireMockServer ProviderC { get; }
 
     public WireMockApiFactory()
     {
         ProviderA = WireMockServer.Start();
         ProviderB = WireMockServer.Start();
+        ProviderC = WireMockServer.Start();
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -20,6 +22,7 @@ public sealed class WireMockApiFactory : WebApplicationFactory<Program>
             {
                 ["Providers:ProviderAUrl"] = ProviderA.Url,
                 ["Providers:ProviderBUrl"] = ProviderB.Url,
+                ["Providers:ProviderCUrl"] = ProviderC.Url,
                 // janelas curtas pros testes não esperarem Polly real
                 ["Resilience:TotalTimeoutSeconds"] = "5",
                 ["Resilience:PerAttemptTimeoutSeconds"] = "2",
@@ -57,6 +60,7 @@ public sealed class WireMockApiFactory : WebApplicationFactory<Program>
     {
         ProviderA.Reset();
         ProviderB.Reset();
+        ProviderC.Reset();
     }
 
     public void StubProviderA(string body, string contentType = "application/json", int status = 200)
@@ -83,6 +87,8 @@ public sealed class WireMockApiFactory : WebApplicationFactory<Program>
             ProviderA.Dispose();
             ProviderB.Stop();
             ProviderB.Dispose();
+            ProviderC.Stop();
+            ProviderC.Dispose();
         }
         base.Dispose(disposing);
     }
